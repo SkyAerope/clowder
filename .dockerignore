@@ -1,0 +1,29 @@
+# 仅构建所需文件进入 Docker 上下文，加速并避免泄露本地数据
+.git
+.github
+.agents
+skills-lock.json
+DESIGN.md
+docs
+
+# 前端依赖与构建产物（容器内重新安装/构建）
+web/node_modules
+web/dist
+
+# 运行时数据
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.pid
+*.log
+providers/*/keys.txt
+
+# 本地产物
+/clowder
+/bin
+out
+.venv
+__pycache__
+.idea
+.vscode
