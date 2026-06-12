@@ -454,13 +454,14 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 	}))
 }
 
-// keyView 序列化单个 key（敏感字段掩码：key 前6后4，email 掩中段）。
+// keyView 序列化单个 key（本地单用户工具，返回完整凭据）。
 func keyView(k *store.Key) map[string]any {
 	v := map[string]any{
 		"id":               k.ID,
 		"provider":         k.Provider,
-		"api_key_masked":   k.MaskedKey(),
-		"email_masked":     k.MaskedEmail(),
+		"api_key":          k.APIKey,
+		"email":            k.Email,
+		"password":         k.Password,
 		"status":           k.Status,
 		"rate_limit_count": k.RateLimitCount,
 		"created_at":       k.CreatedAt.UTC().Format(time.RFC3339),
