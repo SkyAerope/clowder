@@ -15,19 +15,46 @@ const (
 )
 
 // Key 对应 keys 表一行。
+// 注意：APIKey/Email/Password 不参与 JSON 序列化，API 返回时只暴露掩码版本。
 type Key struct {
-	ID             int64
-	Provider       string
-	APIKey         string
-	Email          string
-	Password       string
-	Status         string
-	RateLimitUntil *time.Time
-	RateLimitCount int
-	FirstRequestAt *time.Time
-	LastUsedAt     *time.Time
-	CreatedAt      time.Time
-	Metadata       string // JSON
+	ID             int64      `json:"id"`
+	Provider       string     `json:"provider"`
+	APIKey         string     `json:"-"`
+	Email          string     `json:"-"`
+	Password       string     `json:"-"`
+	Status         string     `json:"status"`
+	RateLimitUntil *time.Time `json:"rate_limit_until,omitempty"`
+	RateLimitCount int        `json:"rate_limit_count"`
+	FirstRequestAt *time.Time `json:"first_request_at,omitempty"`
+	LastUsedAt     *time.Time `json:"last_used_at,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
+	Metadata       string     `json:"metadata,omitempty"` // JSON
+}
+
+// MaskedKey 返回 key 的掩码形式（前 6 后 4）。
+func (k *Key) MaskedKey() string {
+	if len(k.APIKey) <= 12 {
+		return "****"
+	}
+	return k.APIKey[:6] + "..." + k.APIKey[len(k.APIKey)-4:]
+}
+
+// MaskedEmail 返回 email 的掩码形式。
+func (k *Key) MaskedEmail() string {
+	if k.Email == "" {
+		return ""
+	}
+	at := 0
+	for i, c := range k.Email {
+		if c == '@' {
+			at = i
+			break
+		}
+	}
+	if at <= 2 {
+		return "**" + k.Email[at:]
+	}
+	return k.Email[:2] + "***" + k.Email[at:]
 }
 
 const timeLayout = "2006-01-02 15:04:05"

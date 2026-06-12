@@ -18,6 +18,7 @@ import (
 	"github.com/SkyAerope/clowder/internal/config"
 	"github.com/SkyAerope/clowder/internal/models"
 	"github.com/SkyAerope/clowder/internal/rules"
+	"github.com/SkyAerope/clowder/internal/store"
 	"gopkg.in/yaml.v3"
 )
 
@@ -212,7 +213,7 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 			jsonErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		jsonOK(w, keys)
+		jsonOK(w, keyViews(keys))
 	}))
 
 	mux.HandleFunc("POST /api/admin/keys/{id}/disable", admin(func(w http.ResponseWriter, r *http.Request) {
@@ -239,7 +240,11 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 			return
 		}
 		k := a.Pool.FindByID(id)
-		jsonOK(w, k)
+		if k == nil {
+			jsonErr(w, http.StatusNotFound, "key not found")
+			return
+		}
+		jsonOK(w, keyView(k))
 	}))
 
 	mux.HandleFunc("POST /api/admin/register", admin(func(w http.ResponseWriter, r *http.Request) {
@@ -279,7 +284,7 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 			"manifest":               manifestView(ps),
 			"models":                 ps.Models,
 			"models_fetched_at":      timeOrNull(ps.ModelsFetchedAt),
-			"keys":                   keys,
+			"keys":                   keyViews(keys),
 			"last_register_at":       timeOrNull(ps.LastRegisterAt),
 			"last_register_duration": ps.LastRegisterDuration.Milliseconds(),
 			"last_register_error":    ps.LastRegisterError,
@@ -447,6 +452,38 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 		}
 		jsonOK(w, map[string]any{"ok": true})
 	}))
+}
+
+// keyView 序列化单个 key（敏感字段掩码：key 前6后4，email 掩中段）。
+func keyView(k *store.Key) map[string]any {
+	v := map[string]any{
+		"id":               k.ID,
+		"provider":         k.Provider,
+		"api_key_masked":   k.MaskedKey(),
+		"email_masked":     k.MaskedEmail(),
+		"status":           k.Status,
+		"rate_limit_count": k.RateLimitCount,
+		"created_at":       k.CreatedAt.UTC().Format(time.RFC3339),
+		"metadata":         k.Metadata,
+	}
+	if k.RateLimitUntil != nil {
+		v["rate_limit_until"] = k.RateLimitUntil.UTC().Format(time.RFC3339)
+	}
+	if k.FirstRequestAt != nil {
+		v["first_request_at"] = k.FirstRequestAt.UTC().Format(time.RFC3339)
+	}
+	if k.LastUsedAt != nil {
+		v["last_used_at"] = k.LastUsedAt.UTC().Format(time.RFC3339)
+	}
+	return v
+}
+
+func keyViews(keys []*store.Key) []map[string]any {
+	out := make([]map[string]any, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, keyView(k))
+	}
+	return out
 }
 
 func validationCtx(a *app.App) *rules.ValidationContext {

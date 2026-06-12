@@ -7,14 +7,14 @@ import (
 
 // Candidate 一个可路由的 (provider, native model) 组合。
 type Candidate struct {
-	Provider  string
-	Native    string // provider 原生模型名
-	Canonical string
-	Priority  int
-	Weight    int
-	TTFTMs    int64
-	HasTTFT   bool
-	Hedge     bool
+	Provider  string `json:"provider"`
+	Native    string `json:"native"` // provider 原生模型名
+	Canonical string `json:"canonical"`
+	Priority  int    `json:"priority"`
+	Weight    int    `json:"weight"`
+	TTFTMs    int64  `json:"ttft_ms"`
+	HasTTFT   bool   `json:"has_ttft"`
+	Hedge     bool   `json:"hedge"`
 }
 
 // CandidatesFor 返回支持指定 canonical 的健康候选，按设计排序：
