@@ -4,6 +4,12 @@ import { useRoute } from 'vue-router'
 import { api, type KeyRow } from '../api'
 import Card from '../components/Card.vue'
 import StatusBadge from '../components/StatusBadge.vue'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow,
+} from '@/components/ui/table'
 import { RefreshCw, Plus, Stethoscope } from 'lucide-vue-next'
 
 const route = useRoute()
@@ -86,19 +92,21 @@ onMounted(load)
     <div class="flex items-center justify-between flex-wrap gap-2">
       <h1 class="text-xl font-semibold">{{ detail.manifest.display_name || name }}</h1>
       <div class="flex gap-2">
-        <button v-if="detail.manifest.has_check" class="btn-outline" :disabled="checking" @click="checkAll">
+        <Button v-if="detail.manifest.has_check" variant="outline" size="sm" :disabled="checking" @click="checkAll">
           <Stethoscope class="size-4" :class="checking && 'animate-pulse'" /> 全部 check
-        </button>
-        <button class="btn-outline" :disabled="refreshing" @click="refreshModels">
+        </Button>
+        <Button variant="outline" size="sm" :disabled="refreshing" @click="refreshModels">
           <RefreshCw class="size-4" :class="refreshing && 'animate-spin'" /> 刷新模型
-        </button>
-        <button v-if="detail.manifest.key_source === 'script'" class="btn-primary" :disabled="registering" @click="register">
+        </Button>
+        <Button v-if="detail.manifest.key_source === 'script'" size="sm" :disabled="registering" @click="register">
           <Plus class="size-4" :class="registering && 'animate-pulse'" /> 注册新 Key
-        </button>
+        </Button>
       </div>
     </div>
 
-    <p v-if="msg" class="text-sm" :class="msg.includes('失败') ? 'text-destructive' : 'text-success'">{{ msg }}</p>
+    <Alert v-if="msg" :variant="msg.includes('失败') ? 'destructive' : 'default'">
+      <AlertDescription>{{ msg }}</AlertDescription>
+    </Alert>
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <Card title="Manifest">
@@ -124,29 +132,32 @@ onMounted(load)
 
     <Card :title="`模型 (${detail.models?.length ?? 0})，拉取于 ${fmtTime(detail.models_fetched_at)}`">
       <div class="flex flex-wrap gap-1.5">
-        <span v-for="m in detail.models" :key="m" class="badge bg-muted text-foreground font-mono">{{ m }}</span>
+        <Badge v-for="m in detail.models" :key="m" variant="secondary" class="font-mono">{{ m }}</Badge>
         <span v-if="!detail.models?.length" class="text-sm text-muted-foreground">无模型</span>
       </div>
     </Card>
 
     <Card :title="`Keys (${detail.keys?.length ?? 0})`">
       <div class="overflow-x-auto">
-        <table class="table-base">
-          <thead>
-            <tr><th>ID</th><th>Key</th><th>Email</th><th>状态</th><th>限流次数</th><th>最后使用</th></tr>
-          </thead>
-          <tbody>
-            <tr v-for="k in detail.keys" :key="k.id">
-              <td class="text-muted-foreground">#{{ k.id }}</td>
-              <td class="font-mono text-xs">{{ k.api_key_masked }}</td>
-              <td class="font-mono text-xs">{{ k.email_masked || '—' }}</td>
-              <td><StatusBadge :status="k.status" /></td>
-              <td>{{ k.rate_limit_count }}</td>
-              <td class="text-xs">{{ fmtTime(k.last_used_at) }}</td>
-            </tr>
-            <tr v-if="!detail.keys?.length"><td colspan="6" class="text-center text-muted-foreground py-4">暂无 key</td></tr>
-          </tbody>
-        </table>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>ID</TableHead><TableHead>Key</TableHead><TableHead>Email</TableHead>
+              <TableHead>状态</TableHead><TableHead>限流次数</TableHead><TableHead>最后使用</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRow v-for="k in detail.keys" :key="k.id">
+              <TableCell class="text-muted-foreground">#{{ k.id }}</TableCell>
+              <TableCell class="font-mono text-xs break-all max-w-64">{{ k.api_key }}</TableCell>
+              <TableCell class="font-mono text-xs">{{ k.email || '—' }}</TableCell>
+              <TableCell><StatusBadge :status="k.status" /></TableCell>
+              <TableCell>{{ k.rate_limit_count }}</TableCell>
+              <TableCell class="text-xs">{{ fmtTime(k.last_used_at) }}</TableCell>
+            </TableRow>
+            <TableEmpty v-if="!detail.keys?.length" :colspan="6">暂无 key</TableEmpty>
+          </TableBody>
+        </Table>
       </div>
     </Card>
   </div>

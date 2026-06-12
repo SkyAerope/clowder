@@ -2,6 +2,9 @@
 import { ref, onMounted } from 'vue'
 import { api } from '../api'
 import Card from '../components/Card.vue'
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Save, RotateCw } from 'lucide-vue-next'
 
 const configYaml = ref('')
@@ -51,23 +54,25 @@ onMounted(load)
     <div class="flex items-center justify-between">
       <h1 class="text-xl font-semibold">设置</h1>
       <div class="flex gap-2">
-        <button class="btn-outline" :disabled="reloading" @click="reload">
+        <Button variant="outline" size="sm" :disabled="reloading" @click="reload">
           <RotateCw class="size-4" :class="reloading && 'animate-spin'" /> 重载
-        </button>
-        <button class="btn-primary" :disabled="saving" @click="save">
+        </Button>
+        <Button size="sm" :disabled="saving" @click="save">
           <Save class="size-4" /> 保存并生效
-        </button>
+        </Button>
       </div>
     </div>
 
-    <p v-if="msg" class="text-sm" :class="msg.includes('失败') ? 'text-destructive' : 'text-success'">{{ msg }}</p>
+    <Alert v-if="msg" :variant="msg.includes('失败') ? 'destructive' : 'default'">
+      <AlertDescription>{{ msg }}</AlertDescription>
+    </Alert>
 
     <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
       <Card title="config.yaml">
-        <textarea v-model="configYaml" rows="24" class="input font-mono text-xs leading-relaxed" spellcheck="false" />
+        <Textarea v-model="configYaml" :rows="24" class="font-mono text-xs leading-relaxed" spellcheck="false" />
       </Card>
       <Card title="models.yaml（模型映射）">
-        <textarea v-model="modelsYaml" rows="24" class="input font-mono text-xs leading-relaxed" spellcheck="false" />
+        <Textarea v-model="modelsYaml" :rows="24" class="font-mono text-xs leading-relaxed" spellcheck="false" />
       </Card>
     </div>
   </div>

@@ -1,10 +1,16 @@
 <script setup lang="ts">
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+
 defineProps<{ title?: string }>()
 </script>
 
 <template>
-  <div class="card p-4">
-    <h3 v-if="title" class="text-sm font-medium text-muted-foreground mb-3">{{ title }}</h3>
-    <slot />
-  </div>
+  <Card>
+    <CardHeader v-if="title">
+      <CardTitle class="text-sm font-medium text-muted-foreground">{{ title }}</CardTitle>
+    </CardHeader>
+    <CardContent>
+      <slot />
+    </CardContent>
+  </Card>
 </template>

@@ -2,17 +2,25 @@
 import { ref, onMounted, computed } from 'vue'
 import { api, type KeyRow, type Provider } from '../api'
 import StatusBadge from '../components/StatusBadge.vue'
+import { Button } from '@/components/ui/button'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select'
+import {
+  Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow,
+} from '@/components/ui/table'
 import { RefreshCw, Plus, Stethoscope, Ban, CircleCheck } from 'lucide-vue-next'
 
 const keys = ref<KeyRow[]>([])
 const providers = ref<Provider[]>([])
-const filter = ref('')
+const filter = ref('all')
 const busy = ref<Record<number, boolean>>({})
 const registering = ref(false)
 const msg = ref('')
 
 const filtered = computed(() =>
-  filter.value ? keys.value.filter(k => k.provider === filter.value) : keys.value
+  filter.value !== 'all' ? keys.value.filter(k => k.provider === filter.value) : keys.value
 )
 
 async function load() {
@@ -38,7 +46,7 @@ async function action(k: KeyRow, act: 'disable' | 'enable' | 'check') {
 }
 
 async function register() {
-  if (!filter.value) {
+  if (filter.value === 'all') {
     msg.value = '请先在筛选框选择 provider'
     return
   }
@@ -69,59 +77,64 @@ onMounted(load)
     <div class="flex items-center justify-between flex-wrap gap-2">
       <h1 class="text-xl font-semibold">Key 管理</h1>
       <div class="flex items-center gap-2">
-        <select v-model="filter" class="input w-44">
-          <option value="">全部 provider</option>
-          <option v-for="p in providers" :key="p.name" :value="p.name">{{ p.name }}</option>
-        </select>
-        <button class="btn-primary" :disabled="registering || !filter" @click="register">
+        <Select v-model="filter">
+          <SelectTrigger class="w-44"><SelectValue placeholder="全部 provider" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">全部 provider</SelectItem>
+            <SelectItem v-for="p in providers" :key="p.name" :value="p.name">{{ p.name }}</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button :disabled="registering || filter === 'all'" @click="register">
           <Plus class="size-4" :class="registering && 'animate-pulse'" /> 注册新 Key
-        </button>
-        <button class="btn-outline" @click="load"><RefreshCw class="size-4" /></button>
+        </Button>
+        <Button variant="outline" size="icon" @click="load"><RefreshCw class="size-4" /></Button>
       </div>
     </div>
 
-    <p v-if="msg" class="text-sm" :class="msg.includes('失败') ? 'text-destructive' : 'text-success'">{{ msg }}</p>
+    <Alert v-if="msg" :variant="msg.includes('失败') ? 'destructive' : 'default'">
+      <AlertDescription>{{ msg }}</AlertDescription>
+    </Alert>
 
-    <div class="card overflow-x-auto">
-      <table class="table-base">
-        <thead>
-          <tr>
-            <th>ID</th><th>Provider</th><th>Key</th><th>Email</th><th>状态</th>
-            <th>限流次数</th><th>限流至</th><th>最后使用</th><th>创建时间</th><th class="text-right">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="k in filtered" :key="k.id" class="hover:bg-muted/50">
-            <td class="text-muted-foreground">#{{ k.id }}</td>
-            <td>{{ k.provider }}</td>
-            <td class="font-mono text-xs">{{ k.api_key_masked }}</td>
-            <td class="font-mono text-xs">{{ k.email_masked || '—' }}</td>
-            <td><StatusBadge :status="k.status" /></td>
-            <td>{{ k.rate_limit_count }}</td>
-            <td class="text-xs">{{ fmtTime(k.rate_limit_until) }}</td>
-            <td class="text-xs">{{ fmtTime(k.last_used_at) }}</td>
-            <td class="text-xs">{{ fmtTime(k.created_at) }}</td>
-            <td>
+    <div class="rounded-none border bg-card overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>ID</TableHead><TableHead>Provider</TableHead><TableHead>Key</TableHead>
+            <TableHead>Email</TableHead><TableHead>状态</TableHead><TableHead>限流次数</TableHead>
+            <TableHead>限流至</TableHead><TableHead>最后使用</TableHead><TableHead>创建时间</TableHead>
+            <TableHead class="text-right">操作</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow v-for="k in filtered" :key="k.id">
+            <TableCell class="text-muted-foreground">#{{ k.id }}</TableCell>
+            <TableCell>{{ k.provider }}</TableCell>
+            <TableCell class="font-mono text-xs break-all max-w-64">{{ k.api_key }}</TableCell>
+            <TableCell class="font-mono text-xs">{{ k.email || '—' }}</TableCell>
+            <TableCell><StatusBadge :status="k.status" /></TableCell>
+            <TableCell>{{ k.rate_limit_count }}</TableCell>
+            <TableCell class="text-xs">{{ fmtTime(k.rate_limit_until) }}</TableCell>
+            <TableCell class="text-xs">{{ fmtTime(k.last_used_at) }}</TableCell>
+            <TableCell class="text-xs">{{ fmtTime(k.created_at) }}</TableCell>
+            <TableCell>
               <div class="flex justify-end gap-1">
-                <button class="btn-ghost p-1.5" title="一键 check" :disabled="busy[k.id]" @click="action(k, 'check')">
+                <Button variant="ghost" size="icon-sm" title="一键 check" :disabled="busy[k.id]" @click="action(k, 'check')">
                   <Stethoscope class="size-4" :class="busy[k.id] && 'animate-pulse'" />
-                </button>
-                <button v-if="k.status !== 'invalid'" class="btn-ghost p-1.5 text-destructive" title="禁用"
+                </Button>
+                <Button v-if="k.status !== 'invalid'" variant="ghost" size="icon-sm" class="text-destructive" title="禁用"
                   :disabled="busy[k.id]" @click="action(k, 'disable')">
                   <Ban class="size-4" />
-                </button>
-                <button v-else class="btn-ghost p-1.5 text-success" title="启用"
+                </Button>
+                <Button v-else variant="ghost" size="icon-sm" class="text-success" title="启用"
                   :disabled="busy[k.id]" @click="action(k, 'enable')">
                   <CircleCheck class="size-4" />
-                </button>
+                </Button>
               </div>
-            </td>
-          </tr>
-          <tr v-if="!filtered.length">
-            <td colspan="10" class="text-center text-muted-foreground py-6">暂无 key</td>
-          </tr>
-        </tbody>
-      </table>
+            </TableCell>
+          </TableRow>
+          <TableEmpty v-if="!filtered.length" :colspan="10">暂无 key</TableEmpty>
+        </TableBody>
+      </Table>
     </div>
   </div>
 </template>

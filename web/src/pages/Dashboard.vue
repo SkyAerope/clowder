@@ -4,6 +4,9 @@ import { api, session, type Provider, type ModelEdge, type Candidate } from '../
 import Card from '../components/Card.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import RoutingGraph from '../components/RoutingGraph.vue'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { RefreshCw, Zap } from 'lucide-vue-next'
 
 const providers = ref<Provider[]>([])
@@ -43,12 +46,14 @@ onUnmounted(() => clearInterval(timer))
   <div class="space-y-6">
     <div class="flex items-center justify-between">
       <h1 class="text-xl font-semibold">看板</h1>
-      <button class="btn-outline" :disabled="loading" @click="load">
+      <Button variant="outline" size="sm" :disabled="loading" @click="load">
         <RefreshCw class="size-4" :class="loading && 'animate-spin'" /> 刷新
-      </button>
+      </Button>
     </div>
 
-    <div v-if="error" class="card p-4 text-destructive text-sm">{{ error }}</div>
+    <Alert v-if="error" variant="destructive">
+      <AlertDescription>{{ error }}</AlertDescription>
+    </Alert>
 
     <!-- Provider 状态卡片 -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -57,7 +62,7 @@ onUnmounted(() => clearInterval(timer))
         v-for="p in providers"
         :key="p.name"
         :to="session.admin ? `/providers/${p.name}` : undefined"
-        class="card p-4 space-y-2"
+        class="rounded-none border bg-card text-card-foreground shadow-sm p-4 space-y-2"
         :class="session.admin && 'hover:border-primary/50 transition-colors'"
       >
         <div class="flex items-center justify-between">
@@ -79,7 +84,7 @@ onUnmounted(() => clearInterval(timer))
           </div>
         </div>
       </component>
-      <div v-if="!providers.length && !error" class="card p-6 text-sm text-muted-foreground col-span-full text-center">
+      <div v-if="!providers.length && !error" class="rounded-none border bg-card text-card-foreground shadow-sm p-6 text-sm text-muted-foreground col-span-full text-center">
         暂无 provider，在 ~/.clowder/providers/ 下添加目录后 reload
       </div>
     </div>
@@ -90,13 +95,13 @@ onUnmounted(() => clearInterval(timer))
         <div
           v-for="(c, i) in auto"
           :key="c.provider + c.canonical"
-          class="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"
+          class="flex items-center gap-2 rounded-none border px-3 py-2 text-sm"
           :class="i === 0 && 'border-primary/60 bg-primary/5'"
         >
           <Zap class="size-4" :class="i === 0 ? 'text-primary' : 'text-muted-foreground'" />
           <span class="font-medium">{{ c.canonical }}</span>
           <span class="text-muted-foreground">via {{ c.provider }}</span>
-          <span v-if="c.has_ttft" class="badge bg-muted text-muted-foreground">{{ c.ttft_ms }}ms</span>
+          <Badge v-if="c.has_ttft" variant="secondary">{{ c.ttft_ms }}ms</Badge>
         </div>
       </div>
       <div v-else class="text-sm text-muted-foreground">暂无可路由模型</div>

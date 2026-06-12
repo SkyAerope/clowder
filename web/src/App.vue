@@ -1,13 +1,18 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { session, refreshSession, api } from './api'
 import {
   LayoutDashboard, KeyRound, ScrollText, AlertTriangle,
-  Camera, SlidersHorizontal, Settings, LogOut, LogIn, Cat,
+  Camera, SlidersHorizontal, Settings, LogOut, LogIn, Cat, Menu,
 } from 'lucide-vue-next'
+import { Button } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
+import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { Toaster } from '@/components/ui/sonner'
 
 const router = useRouter()
+const mobileOpen = ref(false)
 
 onMounted(refreshSession)
 
@@ -29,36 +34,85 @@ const navItems = [
 </script>
 
 <template>
-  <div class="flex min-h-screen">
-    <aside class="w-52 shrink-0 border-r border-border bg-card flex flex-col">
-      <div class="flex items-center gap-2 px-4 py-4 border-b border-border">
-        <Cat class="size-6 text-primary" />
-        <span class="font-semibold text-lg">clowder</span>
-      </div>
-      <nav class="flex-1 p-2 space-y-0.5">
-        <template v-for="item in navItems" :key="item.to">
-          <RouterLink
-            v-if="!item.admin || session.admin"
-            :to="item.to"
-            class="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm hover:bg-muted transition-colors"
-            active-class="bg-muted font-medium text-primary"
-          >
-            <component :is="item.icon" class="size-4" />
-            {{ item.label }}
-          </RouterLink>
-        </template>
-      </nav>
-      <div class="p-2 border-t border-border">
-        <button v-if="session.admin" class="btn-ghost w-full justify-start text-muted-foreground" @click="logout">
-          <LogOut class="size-4" /> 退出管理
-        </button>
-        <RouterLink v-else to="/login" class="btn-ghost w-full justify-start text-muted-foreground">
-          <LogIn class="size-4" /> 管理登录
+  <div class="flex min-h-screen flex-col">
+    <header class="sticky top-0 z-30 border-b border-border bg-card/80 backdrop-blur">
+      <div class="flex h-14 items-center gap-2 px-4">
+        <!-- 移动端：汉堡 + 可展开左栏 -->
+        <Sheet v-model:open="mobileOpen">
+          <SheetTrigger as-child>
+            <Button variant="ghost" size="icon" class="md:hidden">
+              <Menu class="size-5" />
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left" class="w-64 p-0">
+            <SheetHeader class="border-b border-border">
+              <SheetTitle class="flex items-center gap-2">
+                <Cat class="size-5 text-primary" /> clowder
+              </SheetTitle>
+            </SheetHeader>
+            <nav class="flex flex-col gap-0.5 p-2">
+              <template v-for="item in navItems" :key="item.to">
+                <RouterLink
+                  v-if="!item.admin || session.admin"
+                  :to="item.to"
+                  class="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm hover:bg-muted transition-colors"
+                  active-class="bg-muted font-medium text-primary"
+                  @click="mobileOpen = false"
+                >
+                  <component :is="item.icon" class="size-4" />
+                  {{ item.label }}
+                </RouterLink>
+              </template>
+              <Separator class="my-2" />
+              <button v-if="session.admin"
+                class="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted transition-colors"
+                @click="logout(); mobileOpen = false">
+                <LogOut class="size-4" /> 退出管理
+              </button>
+              <RouterLink v-else to="/login"
+                class="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted transition-colors"
+                @click="mobileOpen = false">
+                <LogIn class="size-4" /> 管理登录
+              </RouterLink>
+            </nav>
+          </SheetContent>
+        </Sheet>
+
+        <RouterLink to="/dashboard" class="flex items-center gap-2 font-semibold text-lg">
+          <Cat class="size-6 text-primary" />
+          <span>clowder</span>
         </RouterLink>
+
+        <!-- 桌面端顶栏导航 -->
+        <nav class="ml-4 hidden items-center gap-0.5 md:flex">
+          <template v-for="item in navItems" :key="item.to">
+            <RouterLink
+              v-if="!item.admin || session.admin"
+              :to="item.to"
+              class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm hover:bg-muted transition-colors"
+              active-class="bg-muted font-medium text-primary"
+            >
+              <component :is="item.icon" class="size-4" />
+              {{ item.label }}
+            </RouterLink>
+          </template>
+        </nav>
+
+        <div class="ml-auto">
+          <Button v-if="session.admin" variant="ghost" size="sm" class="text-muted-foreground" @click="logout">
+            <LogOut class="size-4" /> 退出管理
+          </Button>
+          <Button v-else as-child variant="ghost" size="sm" class="text-muted-foreground">
+            <RouterLink to="/login"><LogIn class="size-4" /> 管理登录</RouterLink>
+          </Button>
+        </div>
       </div>
-    </aside>
-    <main class="flex-1 min-w-0 p-6">
+    </header>
+
+    <main class="mx-auto w-full max-w-7xl flex-1 p-4 md:p-6">
       <RouterView />
     </main>
+
+    <Toaster rich-colors close-button />
   </div>
 </template>

@@ -2,6 +2,9 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, refreshSession } from '../api'
+import { Card } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Cat } from 'lucide-vue-next'
 
 const router = useRouter()
@@ -26,15 +29,17 @@ async function login() {
 
 <template>
   <div class="flex items-center justify-center min-h-[70vh]">
-    <form class="card p-8 w-full max-w-sm space-y-4" @submit.prevent="login">
-      <div class="flex items-center justify-center gap-2 mb-2">
-        <Cat class="size-8 text-primary" />
-        <span class="text-xl font-semibold">clowder 管理</span>
-      </div>
-      <input v-model="adminKey" type="password" class="input" placeholder="admin key" autofocus />
-      <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
-      <button class="btn-primary w-full justify-center" :disabled="loading || !adminKey">登录</button>
-      <p class="text-xs text-muted-foreground text-center">admin key 位于 ~/.clowder/config.yaml</p>
-    </form>
+    <Card class="p-8 w-full max-w-sm">
+      <form class="space-y-4" @submit.prevent="login">
+        <div class="flex items-center justify-center gap-2 mb-2">
+          <Cat class="size-8 text-primary" />
+          <span class="text-xl font-semibold">clowder 管理</span>
+        </div>
+        <Input v-model="adminKey" type="password" placeholder="admin key" autofocus />
+        <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
+        <Button type="submit" class="w-full" :disabled="loading || !adminKey">登录</Button>
+        <p class="text-xs text-muted-foreground text-center">admin key 位于 ~/.clowder/config.yaml</p>
+      </form>
+    </Card>
   </div>
 </template>

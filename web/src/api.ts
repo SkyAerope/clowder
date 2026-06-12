@@ -70,8 +70,9 @@ export interface Candidate {
 export interface KeyRow {
   id: number
   provider: string
-  api_key_masked: string
-  email_masked: string
+  api_key: string
+  email: string
+  password: string
   status: string
   rate_limit_count: number
   rate_limit_until?: string
@@ -138,7 +139,6 @@ export interface RuleView {
   source: number
   builtin: boolean
   type: string
-  specificity: number
 }
 
 export interface RulePreset {

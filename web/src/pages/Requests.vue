@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { api, type RequestLog } from '../api'
+import { Button } from '@/components/ui/button'
+import {
+  Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow,
+} from '@/components/ui/table'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog'
 import { RefreshCw, ChevronLeft, ChevronRight, GitBranch } from 'lucide-vue-next'
 
 const logs = ref<RequestLog[]>([])
@@ -8,6 +15,7 @@ const offset = ref(0)
 const limit = 50
 const trace = ref<RequestLog[] | null>(null)
 const traceID = ref('')
+const traceOpen = ref(false)
 
 async function load() {
   logs.value = (await api.get<RequestLog[]>(`/api/admin/requests?limit=${limit}&offset=${offset.value}`)) ?? []
@@ -16,6 +24,7 @@ async function load() {
 async function showTrace(id: string) {
   traceID.value = id
   trace.value = (await api.get<RequestLog[]>(`/api/admin/trace/${id}`)) ?? []
+  traceOpen.value = true
 }
 
 function statusClass(code?: number) {
@@ -36,51 +45,51 @@ onMounted(load)
     <div class="flex items-center justify-between">
       <h1 class="text-xl font-semibold">请求日志</h1>
       <div class="flex gap-2">
-        <button class="btn-outline" :disabled="offset === 0" @click="prev"><ChevronLeft class="size-4" /></button>
-        <button class="btn-outline" :disabled="logs.length < limit" @click="next"><ChevronRight class="size-4" /></button>
-        <button class="btn-outline" @click="load"><RefreshCw class="size-4" /></button>
+        <Button variant="outline" size="icon" :disabled="offset === 0" @click="prev"><ChevronLeft class="size-4" /></Button>
+        <Button variant="outline" size="icon" :disabled="logs.length < limit" @click="next"><ChevronRight class="size-4" /></Button>
+        <Button variant="outline" size="icon" @click="load"><RefreshCw class="size-4" /></Button>
       </div>
     </div>
 
-    <div class="card overflow-x-auto">
-      <table class="table-base">
-        <thead>
-          <tr>
-            <th>时间</th><th>Trace</th><th>#</th><th>Provider</th><th>模型</th>
-            <th>状态</th><th>TTFT</th><th>耗时</th><th>命中规则</th><th>错误</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="l in logs" :key="l.id" class="hover:bg-muted/50">
-            <td class="text-xs whitespace-nowrap">{{ new Date(l.created_at + 'Z').toLocaleString() }}</td>
-            <td>
+    <div class="rounded-none border bg-card overflow-x-auto">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>时间</TableHead><TableHead>Trace</TableHead><TableHead>#</TableHead>
+            <TableHead>Provider</TableHead><TableHead>模型</TableHead><TableHead>状态</TableHead>
+            <TableHead>TTFT</TableHead><TableHead>耗时</TableHead><TableHead>命中规则</TableHead><TableHead>错误</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow v-for="l in logs" :key="l.id">
+            <TableCell class="text-xs whitespace-nowrap">{{ new Date(l.created_at + 'Z').toLocaleString() }}</TableCell>
+            <TableCell>
               <button class="font-mono text-xs text-primary hover:underline flex items-center gap-1"
                 @click="showTrace(l.trace_id)">
                 <GitBranch class="size-3" />{{ l.trace_id.slice(0, 8) }}
               </button>
-            </td>
-            <td>{{ l.attempt_no }}</td>
-            <td>{{ l.provider }}</td>
-            <td class="font-mono text-xs">{{ l.model }}</td>
-            <td><span :class="statusClass(l.status_code)" class="font-medium">{{ l.status_code ?? 'ERR' }}</span></td>
-            <td class="text-xs">{{ l.ttft_ms != null ? l.ttft_ms + 'ms' : '—' }}</td>
-            <td class="text-xs">{{ l.latency_ms != null ? l.latency_ms + 'ms' : '—' }}</td>
-            <td class="text-xs">{{ l.matched_rule || '—' }}</td>
-            <td class="text-xs text-destructive max-w-56 truncate" :title="l.error_msg">{{ l.error_msg || '' }}</td>
-          </tr>
-          <tr v-if="!logs.length"><td colspan="10" class="text-center text-muted-foreground py-6">暂无请求</td></tr>
-        </tbody>
-      </table>
+            </TableCell>
+            <TableCell>{{ l.attempt_no }}</TableCell>
+            <TableCell>{{ l.provider }}</TableCell>
+            <TableCell class="font-mono text-xs">{{ l.model }}</TableCell>
+            <TableCell><span :class="statusClass(l.status_code)" class="font-medium">{{ l.status_code ?? 'ERR' }}</span></TableCell>
+            <TableCell class="text-xs">{{ l.ttft_ms != null ? l.ttft_ms + 'ms' : '—' }}</TableCell>
+            <TableCell class="text-xs">{{ l.latency_ms != null ? l.latency_ms + 'ms' : '—' }}</TableCell>
+            <TableCell class="text-xs">{{ l.matched_rule || '—' }}</TableCell>
+            <TableCell class="text-xs text-destructive max-w-56 truncate" :title="l.error_msg">{{ l.error_msg || '' }}</TableCell>
+          </TableRow>
+          <TableEmpty v-if="!logs.length" :colspan="10">暂无请求</TableEmpty>
+        </TableBody>
+      </Table>
     </div>
 
     <!-- Trace 链视图 -->
-    <div v-if="trace" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-6" @click.self="trace = null">
-      <div class="card p-5 max-w-3xl w-full max-h-[80vh] overflow-y-auto space-y-3">
-        <div class="flex items-center justify-between">
-          <h2 class="font-semibold">Trace <span class="font-mono text-sm text-muted-foreground">{{ traceID }}</span></h2>
-          <button class="btn-ghost" @click="trace = null">关闭</button>
-        </div>
-        <div class="space-y-2">
+    <Dialog v-model:open="traceOpen">
+      <DialogContent class="max-w-3xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Trace <span class="font-mono text-sm text-muted-foreground">{{ traceID }}</span></DialogTitle>
+        </DialogHeader>
+        <div v-if="trace" class="space-y-2">
           <div v-for="(t, i) in trace" :key="t.id" class="flex gap-3">
             <div class="flex flex-col items-center">
               <div class="size-6 rounded-full flex items-center justify-center text-xs font-semibold"
@@ -105,7 +114,7 @@ onMounted(load)
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>

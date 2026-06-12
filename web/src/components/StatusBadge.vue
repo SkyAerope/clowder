@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { Badge } from '@/components/ui/badge'
+import { cn } from '@/lib/utils'
 
 const props = defineProps<{ status: string }>()
 
@@ -7,20 +9,20 @@ const cls = computed(() => {
   switch (props.status) {
     case 'healthy':
     case 'active':
-      return 'bg-success/15 text-success'
+      return 'border-transparent bg-success/15 text-success'
     case 'probing':
     case 'rate_limited':
     case 'idle':
-      return 'bg-warning/20 text-warning'
+      return 'border-transparent bg-warning/20 text-warning'
     case 'unhealthy':
     case 'invalid':
-      return 'bg-destructive/15 text-destructive'
+      return 'border-transparent bg-destructive/15 text-destructive'
     default:
-      return 'bg-muted text-muted-foreground'
+      return 'border-transparent bg-muted text-muted-foreground'
   }
 })
 </script>
 
 <template>
-  <span class="badge" :class="cls">{{ status }}</span>
+  <Badge variant="outline" :class="cn(cls)">{{ status }}</Badge>
 </template>
