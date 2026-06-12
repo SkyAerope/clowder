@@ -4,9 +4,9 @@ DESIGN.md
 # 构建产物
 /clowder
 /bin/
-# 前端构建产物（保留占位 index.html 使 go:embed 始终可编译）
+# 前端构建产物（保留 .gitkeep 占位使 go:embed 始终可编译）
 web/dist/*
-!web/dist/index.html
+!web/dist/.gitkeep
 
 # 运行时数据
 *.db

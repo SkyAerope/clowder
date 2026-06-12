@@ -383,7 +383,7 @@ func (s *Server) doAttempt(ctx context.Context, w http.ResponseWriter, cand app.
 	if !upstreamStreaming || !isSSE {
 		return s.deliverWhole(w, resp, o, clientStream, reqModel, start)
 	}
-	return s.deliverStream(w, resp, o, cancel, aggregate, reqModel, start, cand)
+	return s.deliverStream(ctx, w, resp, o, cancel, aggregate, reqModel, start, cand)
 }
 
 // deliverWhole 上游非流式（或不支持 SSE）：全量读取后交付。
@@ -416,10 +416,12 @@ func (s *Server) deliverWhole(w http.ResponseWriter, resp *http.Response, o *att
 }
 
 // deliverStream 上游 SSE：等首字节（带 TTFT 计时）→ 透传或聚合。
-func (s *Server) deliverStream(w http.ResponseWriter, resp *http.Response, o *attemptOutcome,
+func (s *Server) deliverStream(clientCtx context.Context, w http.ResponseWriter, resp *http.Response, o *attemptOutcome,
 	cancel context.CancelFunc, aggregate bool, reqModel string, start time.Time, cand app.Candidate) *attemptOutcome {
 
 	reader := newSSEReader(resp.Body)
+	// clientGone：客户端已断开（区别于上游断流，不应标错误/重试）
+	clientGone := func() bool { return clientCtx.Err() != nil }
 
 	// TTFT 计时器：到 engine 最小阈值时取消上游请求
 	threshold := s.App.Engine.MinTTFTThreshold()
@@ -445,6 +447,10 @@ func (s *Server) deliverStream(w http.ResponseWriter, resp *http.Response, o *at
 			o.event.IsError = true
 			o.event.StatusCode = 0 // 没有可透传的响应
 		default:
+			if clientGone() {
+				o.delivered = true // 客户端断开：静默结束，不重试不记错
+				return o
+			}
 			o.event.Transport = rules.TransportStreamCut
 			o.event.IsError = true
 			o.transportErr = err
@@ -488,6 +494,10 @@ func (s *Server) deliverStream(w http.ResponseWriter, resp *http.Response, o *at
 			if err != nil {
 				if err == io.EOF {
 					break // 无 [DONE] 直接 EOF 也算正常结束
+				}
+				if clientGone() {
+					o.delivered = true
+					return o // 客户端断开
 				}
 				o.event.Transport = rules.TransportStreamCut
 				o.event.IsError = true
@@ -544,6 +554,10 @@ func (s *Server) deliverStream(w http.ResponseWriter, resp *http.Response, o *at
 			if err == io.EOF {
 				o.delivered = true
 				break
+			}
+			if clientGone() {
+				o.delivered = true
+				return o // 客户端断开
 			}
 			// 首字节已发出，上游断流：发 error event 后断开，不重试
 			w.Write(sseErrorEvent(fmt.Sprintf("upstream stream cut (provider=%s): %v", cand.Provider, err)))
