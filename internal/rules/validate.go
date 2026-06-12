@@ -51,20 +51,20 @@ func Validate(all []*Rule, ctx *ValidationContext) []ValidationWarning {
 		warns = append(warns, ValidationWarning{Rule: rule, Message: fmt.Sprintf(format, args...)})
 	}
 
-	// 1. 特异性与 priority 都相同的规则对 → 行为依赖来源顺序
+	// 1. 触发条件（when + if）完全相同且 priority 也相同的规则 → 匹配结果取决于来源/定义顺序
 	type sig struct {
-		spec, prio int
-		typ        string
+		trigger string
+		prio    int
 	}
 	seen := map[sig][]string{}
 	for _, r := range all {
-		k := sig{r.Specificity(), r.Priority, r.When.Type()}
+		k := sig{r.TriggerKey(), r.Priority}
 		seen[k] = append(seen[k], r.Name)
 	}
 	for k, names := range seen {
-		if len(names) > 1 && k.spec > 0 {
+		if len(names) > 1 {
 			for _, n := range names {
-				add(n, "与规则 %v 特异性(%d)与优先级(%d)均相同，匹配顺序取决于来源顺序", names, k.spec, k.prio)
+				add(n, "与规则 %v 触发条件(when+if)与优先级(%d)均相同，匹配顺序取决于来源/定义顺序", names, k.prio)
 			}
 		}
 	}

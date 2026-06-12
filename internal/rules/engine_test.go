@@ -33,15 +33,16 @@ func engineWith(t *testing.T, extraYAML string) *Engine {
 	return NewEngine(all)
 }
 
-func TestMatchSpecificity(t *testing.T) {
+func TestMatchPriority(t *testing.T) {
 	e := engineWith(t, `
 rules:
   - name: ftl-trial-ended
+    priority: 100
     when: { provider: featherless, status_code: 403, body_contains: "trial ended" }
     do: [ { mark_key: invalid } ]
     route: next_key
 `)
-	// 具体规则胜过 default-4xx-passthrough
+	// 用户规则(priority 100)胜过 default-4xx-passthrough(8000)
 	r := e.Match(&Event{Type: "upstream", Provider: "featherless", StatusCode: 403,
 		Body: `{"error":"your trial ended"}`, IsError: true})
 	if r == nil || r.Name != "ftl-trial-ended" {
@@ -56,7 +57,7 @@ rules:
 
 func TestBuiltinTransportBeatsWildcard(t *testing.T) {
 	e := engineWith(t, "")
-	// 内置 dns_failure（具体 transport，特异性 1）胜过 default-transport-retry（transport:true 计 0）
+	// 内置 dns_failure（具体 transport，priority 5000）胜过 default-transport-retry（通用 transport:true，8000）
 	r := e.Match(&Event{Type: "upstream", Provider: "p", Transport: TransportDNSFailure, IsError: true})
 	if r == nil || r.Name != "builtin-dns-failure" {
 		t.Fatalf("want builtin-dns-failure, got %v", name(r))
@@ -97,21 +98,23 @@ func TestIfCondition(t *testing.T) {
 	e := engineWith(t, `
 rules:
   - name: too-many-key-switches
+    priority: 50
     when: { status_code: 429 }
     if:
       key_switches: { gte: 2 }
     route: next_provider
   - name: rate-limit
+    priority: 100
     when: { status_code: 429 }
     do: [ { mark_key: rate_limited } ]
     route: next_key
 `)
-	// key_switches=1：if 不满足，只剩 rate-limit（特异性 1）
+	// key_switches=1：too-many 的 if 不满足，只剩 rate-limit
 	r := e.Match(&Event{Type: "upstream", StatusCode: 429, IsError: true, KeySwitches: 1})
 	if r == nil || r.Name != "rate-limit" {
 		t.Fatalf("want rate-limit, got %v", name(r))
 	}
-	// key_switches=2：if 满足，特异性 2 > 1
+	// key_switches=2：两者都命中，too-many priority 50 < 100 胜出
 	r = e.Match(&Event{Type: "upstream", StatusCode: 429, IsError: true, KeySwitches: 2})
 	if r == nil || r.Name != "too-many-key-switches" {
 		t.Fatalf("want too-many-key-switches, got %v", name(r))

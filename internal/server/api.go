@@ -512,7 +512,6 @@ func ruleViews(rs []*rules.Rule) []map[string]any {
 			"source":      r.Source,
 			"builtin":     r.Builtin,
 			"type":        r.When.Type(),
-			"specificity": r.Specificity(),
 		})
 	}
 	return out

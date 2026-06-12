@@ -1,7 +1,6 @@
 package rules
 
 import (
-	"sort"
 	"strconv"
 	"strings"
 )
@@ -64,28 +63,27 @@ func (e *Engine) NeedsSuccessBodyTee() bool { return e.successBodyRules }
 func (e *Engine) MinTTFTThreshold() int64 { return e.minTTFT }
 
 // Match 返回命中的唯一规则（命中即停）；无命中返回 nil。
-// 排序：特异性大者优先 → priority 小者优先 → 来源顺序（manifest → user → builtin）。
+// 排序：priority 小者优先 → 来源顺序（manifest → user → builtin）→ 定义顺序。
 func (e *Engine) Match(ev *Event) *Rule {
-	var candidates []*Rule
+	var best *Rule
 	for _, r := range e.rules {
-		if e.matches(r, ev) {
-			candidates = append(candidates, r)
+		if !e.matches(r, ev) {
+			continue
+		}
+		// 仅在严格更优时替换：完全平手保留更早定义的规则（稳定）。
+		if best == nil || ruleLess(r, best) {
+			best = r
 		}
 	}
-	if len(candidates) == 0 {
-		return nil
+	return best
+}
+
+// ruleLess 报告 a 是否比 b 优先：priority 小者优先，其次来源顺序。
+func ruleLess(a, b *Rule) bool {
+	if a.Priority != b.Priority {
+		return a.Priority < b.Priority
 	}
-	sort.SliceStable(candidates, func(i, j int) bool {
-		si, sj := candidates[i].Specificity(), candidates[j].Specificity()
-		if si != sj {
-			return si > sj
-		}
-		if candidates[i].Priority != candidates[j].Priority {
-			return candidates[i].Priority < candidates[j].Priority
-		}
-		return candidates[i].Source < candidates[j].Source
-	})
-	return candidates[0]
+	return a.Source < b.Source
 }
 
 func (e *Engine) matches(r *Rule, ev *Event) bool {

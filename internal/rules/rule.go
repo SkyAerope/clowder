@@ -4,6 +4,7 @@ package rules
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -373,6 +374,9 @@ func parseRoute(v any) (RouteSpec, error) {
 			return RouteSpec{}, fmt.Errorf("invalid route %q", rv)
 		}
 		return RouteSpec{Single: rv}, nil
+	case []any:
+		// 简写形式：route: [retry_same, next_key] 等价于 {race: [...]}
+		return parseRace(rv)
 	case map[string]any:
 		raceV, ok := rv["race"]
 		if !ok || len(rv) != 1 {
@@ -382,37 +386,46 @@ func parseRoute(v any) (RouteSpec, error) {
 		if !ok || len(items) == 0 {
 			return RouteSpec{}, fmt.Errorf("race must be a non-empty list")
 		}
-		var race []string
-		for _, it := range items {
-			s := toString(it)
-			if !validRoute(s) || s == RoutePassthrough {
-				return RouteSpec{}, fmt.Errorf("invalid race route %q", s)
-			}
-			race = append(race, s)
-		}
-		return RouteSpec{Race: race}, nil
+		return parseRace(items)
 	default:
 		return RouteSpec{}, fmt.Errorf("invalid route value %v", v)
 	}
 }
 
-// Specificity 特异性 = when 匹配字段数 + if 条件数；通配值（error:true / transport:true）计 0。
-func (r *Rule) Specificity() int {
-	n := 0
-	w := &r.When
-	for _, set := range []bool{
-		w.Provider != "", w.Model != "", w.StatusCode != "",
-		w.BodyContains != "", w.BodyRegex != nil,
-		w.Transport != "" && w.Transport != "true", // transport:true 通配计 0
-		w.TTFTOverMs > 0,
-		w.CheckStatus != "", w.Cron != "",
-	} {
-		if set {
-			n++
-		}
+// parseRace 校验并构造 race 多发路由。
+func parseRace(items []any) (RouteSpec, error) {
+	if len(items) == 0 {
+		return RouteSpec{}, fmt.Errorf("race must be a non-empty list")
 	}
-	// error: true 通配计 0，不加
-	return n + len(r.If)
+	var race []string
+	for _, it := range items {
+		s := toString(it)
+		if !validRoute(s) || s == RoutePassthrough {
+			return RouteSpec{}, fmt.Errorf("invalid race route %q", s)
+		}
+		race = append(race, s)
+	}
+	return RouteSpec{Race: race}, nil
+}
+
+// TriggerKey 返回规则触发条件（when + if）的归一化签名。
+// 两条规则签名相同 = 触发条件完全一致，会对同一批事件竞争匹配。
+func (r *Rule) TriggerKey() string {
+	w := &r.When
+	var b strings.Builder
+	fmt.Fprintf(&b, "t=%s;", w.Type())
+	fmt.Fprintf(&b, "prov=%s;model=%s;sc=%s;bc=%s;br=%s;tr=%s;ttft=%d;err=%t;",
+		w.Provider, w.Model, w.StatusCode, w.BodyContains, w.bodyRegexSrc,
+		w.Transport, w.TTFTOverMs, w.ErrorAny)
+	fmt.Fprintf(&b, "check=%s;cron=%s;scope=%s;", w.CheckStatus, w.Cron, w.ScopeProvider)
+	// if 条件排序后拼接（顺序无关）
+	conds := make([]string, 0, len(r.If))
+	for _, c := range r.If {
+		conds = append(conds, fmt.Sprintf("%s%s%d", c.Field, c.Op, c.Value))
+	}
+	sort.Strings(conds)
+	b.WriteString("if=" + strings.Join(conds, ","))
+	return b.String()
 }
 
 // CanMatchSuccess 该规则是否可能命中成功响应

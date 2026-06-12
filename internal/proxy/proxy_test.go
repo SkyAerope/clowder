@@ -214,6 +214,47 @@ func TestPassthrough4xx(t *testing.T) {
 	}
 }
 
+// TestRaceFirstByteWins 竞速双发：500 触发 race[retry_same, next_key]，
+// k1 恒 500、k2 成功 → 并发取胜者 k2 交付。
+func TestRaceFirstByteWins(t *testing.T) {
+	up := sseUpstream(func(w http.ResponseWriter, r *http.Request) bool {
+		if r.Header.Get("Authorization") == "Bearer k1" {
+			w.WriteHeader(500)
+			fmt.Fprint(w, `{"error":"boom"}`)
+			return true
+		}
+		return false // k2 走默认 SSE 成功
+	})
+	defer up.Close()
+
+	rulesYAML := `
+rules:
+  - name: race-500
+    when: { status_code: 500 }
+    route: [retry_same, next_key]
+  - name: catch-all
+    priority: 10000
+    when: { error: true }
+    route: passthrough
+`
+	a, h := setup(t, up.URL, []string{"k1", "k2"}, rulesYAML)
+
+	w := chatReq(t, h, `{"model":"test-model","messages":[]}`)
+	if w.Code != 200 {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+	// 触发 attempt(1) + race 两路 = 至少 3 条 attempt 落库
+	logs, err := a.Store.ListRequests(10, 0)
+	if err != nil || len(logs) < 3 {
+		t.Fatalf("want >=3 request logs, got %d (%v)", len(logs), err)
+	}
+	for _, l := range logs {
+		if l.TraceID != logs[0].TraceID {
+			t.Fatal("race attempts must share trace_id")
+		}
+	}
+}
+
 func TestModelNotFound(t *testing.T) {
 	up := sseUpstream(nil)
 	defer up.Close()

@@ -5,13 +5,14 @@ import (
 	"regexp"
 )
 
-// BuiltinRules 内置规则：不可删，priority 10000，无 capture。
+// BuiltinRules 内置规则：不可删，无 capture。
 // transport 基础设施故障 → provider 级 unhealthy + next_provider。
+// priority 5000：比通用 default-transport-retry(8000) 更优先，但仍可被用户规则(默认 100)覆盖。
 func BuiltinRules() []*Rule {
 	mk := func(name, transport string) *Rule {
 		return &Rule{
 			Name:     name,
-			Priority: 10000,
+			Priority: 5000,
 			Source:   SourceBuiltin,
 			Builtin:  true,
 			When:     When{Transport: transport},

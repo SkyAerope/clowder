@@ -116,6 +116,7 @@ func (s *Server) runChain(w http.ResponseWriter, r *http.Request, chain *chainSt
 	provIdx := 0
 	usedKeys := map[int64]bool{}
 	var lastOutcome *attemptOutcome
+	var lastCand app.Candidate
 
 	for chain.attemptNo = 1; chain.attemptNo <= maxRetries; chain.attemptNo++ {
 		if provIdx >= len(candidates) {
@@ -134,41 +135,36 @@ func (s *Server) runChain(w http.ResponseWriter, r *http.Request, chain *chainSt
 			continue
 		}
 
-		outcome := s.doAttempt(r.Context(), w, cand, key.APIKey, payload, clientStream, reqModel)
+		// hedge 双发：源/目标 provider 都声明 hedge 且配置了 TTFT 阈值 →
+		// 先发源请求，TTFT 阈值内无首字节则并发拉起下一 provider，首字节先到者赢。
+		if s.hedgeEligible(cand, candidates, provIdx) {
+			if done, lo, lc, advanced := s.runHedge(w, r, chain, candidates, provIdx, key, payload, clientStream, reqModel); advanced {
+				if done {
+					return
+				}
+				lastOutcome, lastCand = lo, lc
+				provIdx += 2
+				usedKeys = map[int64]bool{}
+				chain.provSwitches += 2
+				continue
+			}
+		}
+
+		la := s.dial(r.Context(), cand, key.APIKey, payload, clientStream, reqModel, false)
+		outcome := la.o
+		if la.deliverable() {
+			outcome = s.deliver(w, la, reqModel)
+		}
 		lastOutcome = outcome
+		lastCand = cand
 
-		// 构建事件
-		ev := outcome.event
-		ev.Provider = cand.Provider
-		ev.Model = cand.Canonical
-		ev.AttemptNo = chain.attemptNo
-		ev.KeySwitches = chain.keySwitches
-		ev.ProviderSwitches = chain.provSwitches
-
-		// 引擎匹配（成功响应也进引擎；route 仅错误时生效）
-		matched := s.App.Engine.Match(ev)
-		matchedName := ""
-		if matched != nil {
-			matchedName = matched.Name
-		}
-
-		// 写请求日志
-		reqID := s.logAttempt(chain, cand, key.ID, outcome, matchedName, ev)
-
-		// 执行 do（异步，不阻塞主线）
-		if matched != nil {
-			s.App.RunActions(&app.ActionContext{
-				Rule: matched, Event: ev, KeyID: key.ID, RequestID: reqID,
-				Provider: cand.Provider, Model: cand.Canonical,
-				ReqHeaders: outcome.reqHeaders, ReqBody: outcome.reqBody,
-				RespHeaders: outcome.respHeaders, RespBody: string(outcome.respBody),
-				StatusCode: ev.StatusCode, Fingerprint: ev.FingerprintCache,
-			})
-		}
+		matched := s.finalizeAttempt(chain, cand, key.ID, outcome)
 
 		if outcome.delivered {
-			s.App.Pool.OnSuccess(key.ID)
-			s.App.Health.MarkSuccess(cand.Provider, cand.Canonical, outcome.ttftMs)
+			if !outcome.event.IsError {
+				s.App.Pool.OnSuccess(key.ID)
+				s.App.Health.MarkSuccess(cand.Provider, cand.Canonical, outcome.ttftMs)
+			}
 			return
 		}
 		if outcome.firstByteSent {
@@ -182,7 +178,23 @@ func (s *Server) runChain(w http.ResponseWriter, r *http.Request, chain *chainSt
 		}
 		single := route.Single
 		if route.IsRace() {
-			// race 暂顺序降级：取第一路执行（真双发后续补）
+			// 竞速双发：解析为多路并发分支，首字节先到者赢
+			specs := s.buildRaceBranches(route.Race, cand, key, candidates, provIdx, usedKeys)
+			if len(specs) >= 2 {
+				done, lf := s.runParallel(w, r.Context(), chain, specs, payload, clientStream, reqModel)
+				if done {
+					return
+				}
+				if lf != nil {
+					lastOutcome, lastCand = lf.la.o, lf.spec.cand
+				}
+				// 全部失败：保守推进到下一个未试 provider（避免重试指数扩散）
+				provIdx++
+				usedKeys = map[int64]bool{}
+				chain.provSwitches++
+				continue
+			}
+			// 凑不齐 2 路 → 降级为第一路单发
 			single = route.Race[0]
 		}
 		switch single {
@@ -203,10 +215,37 @@ func (s *Server) runChain(w http.ResponseWriter, r *http.Request, chain *chainSt
 
 	// 重试耗尽 / 候选耗尽
 	if lastOutcome != nil {
-		s.writeErrorToClient(w, lastOutcome, app.Candidate{})
+		s.writeErrorToClient(w, lastOutcome, lastCand)
 		return
 	}
 	writeJSONError(w, http.StatusServiceUnavailable, "all providers exhausted", "service_unavailable")
+}
+
+// finalizeAttempt 对一次完成的 attempt 跑引擎匹配、写日志、执行 do。返回命中规则。
+func (s *Server) finalizeAttempt(chain *chainState, cand app.Candidate, keyID int64, o *attemptOutcome) *rules.Rule {
+	ev := o.event
+	ev.Provider = cand.Provider
+	ev.Model = cand.Canonical
+	ev.AttemptNo = chain.attemptNo
+	ev.KeySwitches = chain.keySwitches
+	ev.ProviderSwitches = chain.provSwitches
+
+	matched := s.App.Engine.Match(ev)
+	matchedName := ""
+	if matched != nil {
+		matchedName = matched.Name
+	}
+	reqID := s.logAttempt(chain, cand, keyID, o, matchedName, ev)
+	if matched != nil {
+		s.App.RunActions(&app.ActionContext{
+			Rule: matched, Event: ev, KeyID: keyID, RequestID: reqID,
+			Provider: cand.Provider, Model: cand.Canonical,
+			ReqHeaders: o.reqHeaders, ReqBody: o.reqBody,
+			RespHeaders: o.respHeaders, RespBody: string(o.respBody),
+			StatusCode: ev.StatusCode, Fingerprint: ev.FingerprintCache,
+		})
+	}
+	return matched
 }
 
 // logAttempt 写 requests 表。
@@ -301,13 +340,49 @@ func (o *attemptOutcome) errorMsg() string {
 	return ""
 }
 
-// doAttempt 发起一次上游请求并处理响应/交付。
-func (s *Server) doAttempt(ctx context.Context, w http.ResponseWriter, cand app.Candidate,
-	apiKey string, payload map[string]any, clientStream bool, reqModel string) *attemptOutcome {
+// liveAttempt 一次"已拨号"的 attempt：dial 阶段推进到"可交付首字节"，deliver 阶段写客户端。
+type liveAttempt struct {
+	o            *attemptOutcome
+	cand         app.Candidate
+	resp         *http.Response
+	reader       *sseReader
+	first        *sseChunk
+	whole        []byte // 非 SSE：全量响应体
+	hasWhole     bool
+	clientStream bool
+	aggregate    bool
+	start        time.Time
+	cancel       context.CancelFunc
+	clientCtx    context.Context
+}
+
+// deliverable 报告 dial 是否拿到可交付的 2xx 响应（首字节已就绪）。
+func (la *liveAttempt) deliverable() bool {
+	return la != nil && la.o != nil && !la.o.event.IsError && !la.o.delivered
+}
+
+// discard 取消并释放该 attempt 的上游连接（竞速败者 / 提前放弃）。
+func (la *liveAttempt) discard() {
+	if la == nil {
+		return
+	}
+	if la.cancel != nil {
+		la.cancel()
+	}
+	if la.resp != nil {
+		la.resp.Body.Close()
+	}
+}
+
+// dial 发起上游请求并推进到"可交付首字节"或失败；不写客户端。
+// hedge=true 时不安装 TTFT 取消计时器（双发场景由协调器决定何时取消慢路）。
+func (s *Server) dial(ctx context.Context, cand app.Candidate, apiKey string,
+	payload map[string]any, clientStream bool, reqModel string, hedge bool) *liveAttempt {
 
 	o := &attemptOutcome{event: &rules.Event{Type: "upstream"}}
 	start := time.Now()
-	defer func() { o.latencyMs = time.Since(start).Milliseconds() }()
+	la := &liveAttempt{o: o, cand: cand, start: start, clientStream: clientStream, clientCtx: ctx}
+	fail := func() *liveAttempt { o.latencyMs = time.Since(start).Milliseconds(); return la }
 
 	// 决定上游是否流式：客户端流式，或 upstream_streaming 开（聚合模式采集 TTFT）
 	upstreamStreaming := clientStream
@@ -319,7 +394,7 @@ func (s *Server) doAttempt(ctx context.Context, w http.ResponseWriter, cand app.
 	if !clientStream && cfgStreaming {
 		upstreamStreaming = true
 	}
-	aggregate := upstreamStreaming && !clientStream
+	la.aggregate = upstreamStreaming && !clientStream
 
 	// 构造上游请求体（替换 model 为 native 名）
 	upPayload := make(map[string]any, len(payload))
@@ -333,24 +408,25 @@ func (s *Server) doAttempt(ctx context.Context, w http.ResponseWriter, cand app.
 		o.event.Transport = rules.TransportMalformed
 		o.event.IsError = true
 		o.transportErr = err
-		return o
+		return fail()
 	}
-
 	if ps == nil {
 		o.event.Transport = rules.TransportMalformed
 		o.event.IsError = true
 		o.transportErr = fmt.Errorf("provider %s not loaded", cand.Provider)
-		return o
+		return fail()
 	}
+
 	attemptCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	la.cancel = cancel
 	url := app.JoinURL(ps.Manifest.BaseURL, "/v1/chat/completions")
 	req, err := http.NewRequestWithContext(attemptCtx, http.MethodPost, url, bytes.NewReader(upBody))
 	if err != nil {
 		o.event.Transport = rules.TransportMalformed
 		o.event.IsError = true
 		o.transportErr = err
-		return o
+		cancel()
+		return fail()
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
@@ -362,9 +438,10 @@ func (s *Server) doAttempt(ctx context.Context, w http.ResponseWriter, cand app.
 		o.event.Transport = classifyTransport(err)
 		o.event.IsError = true
 		o.transportErr = err
-		return o
+		cancel()
+		return fail()
 	}
-	defer resp.Body.Close()
+	la.resp = resp
 	o.respHeaderMap = resp.Header
 	o.respHeaders = headersJSON(resp.Header)
 	o.event.StatusCode = resp.StatusCode
@@ -375,65 +452,43 @@ func (s *Server) doAttempt(ctx context.Context, w http.ResponseWriter, cand app.
 		o.respBody = body
 		o.event.Body = string(body)
 		o.event.IsError = true
-		return o
+		resp.Body.Close()
+		cancel()
+		return fail()
 	}
 
-	// 2xx：按上游响应形态交付
 	isSSE := strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream")
 	if !upstreamStreaming || !isSSE {
-		return s.deliverWhole(w, resp, o, clientStream, reqModel, start)
+		// 非流式：dial 阶段就全量读取（读完即"可交付"）
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
+		resp.Body.Close()
+		if err != nil {
+			o.event.Transport = rules.TransportStreamCut
+			o.event.IsError = true
+			o.transportErr = err
+			cancel()
+			return fail()
+		}
+		o.ttftMs = time.Since(start).Milliseconds()
+		o.event.TTFTMs = o.ttftMs
+		s.feedSuccessBody(o, string(body))
+		la.whole = body
+		la.hasWhole = true
+		return la
 	}
-	return s.deliverStream(ctx, w, resp, o, cancel, aggregate, reqModel, start, cand)
-}
 
-// deliverWhole 上游非流式（或不支持 SSE）：全量读取后交付。
-func (s *Server) deliverWhole(w http.ResponseWriter, resp *http.Response, o *attemptOutcome,
-	clientStream bool, reqModel string, start time.Time) *attemptOutcome {
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
-	if err != nil {
-		o.event.Transport = rules.TransportStreamCut
-		o.event.IsError = true
-		o.transportErr = err
-		return o // 还没写客户端，可重试
-	}
-	o.ttftMs = time.Since(start).Milliseconds()
-	o.event.TTFTMs = o.ttftMs
-	s.feedSuccessBody(o, string(body))
-	if clientStream {
-		// 客户端要流式但上游给了整包：包装成单 chunk SSE
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.WriteHeader(http.StatusOK)
-		o.firstByteSent = true
-		fmt.Fprintf(w, "data: %s\n\ndata: [DONE]\n\n", body)
-	} else {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write(rewriteModelField(body, reqModel))
-	}
-	o.delivered = true
-	return o
-}
-
-// deliverStream 上游 SSE：等首字节（带 TTFT 计时）→ 透传或聚合。
-func (s *Server) deliverStream(clientCtx context.Context, w http.ResponseWriter, resp *http.Response, o *attemptOutcome,
-	cancel context.CancelFunc, aggregate bool, reqModel string, start time.Time, cand app.Candidate) *attemptOutcome {
-
+	// SSE：读首字节（带 TTFT 计时；hedge 模式不自动取消慢路）
 	reader := newSSEReader(resp.Body)
-	// clientGone：客户端已断开（区别于上游断流，不应标错误/重试）
-	clientGone := func() bool { return clientCtx.Err() != nil }
-
-	// TTFT 计时器：到 engine 最小阈值时取消上游请求
+	la.reader = reader
 	threshold := s.App.Engine.MinTTFTThreshold()
 	var ttftTimer *time.Timer
 	timedOut := make(chan struct{})
-	if threshold > 0 {
+	if threshold > 0 && !hedge {
 		ttftTimer = time.AfterFunc(time.Duration(threshold)*time.Millisecond, func() {
 			close(timedOut)
 			cancel()
 		})
 	}
-
 	first, err := reader.next()
 	if ttftTimer != nil {
 		ttftTimer.Stop()
@@ -447,19 +502,54 @@ func (s *Server) deliverStream(clientCtx context.Context, w http.ResponseWriter,
 			o.event.IsError = true
 			o.event.StatusCode = 0 // 没有可透传的响应
 		default:
-			if clientGone() {
-				o.delivered = true // 客户端断开：静默结束，不重试不记错
-				return o
+			if ctx.Err() != nil {
+				o.delivered = true // 客户端/竞速组断开：静默结束，不重试不记错
+			} else {
+				o.event.Transport = rules.TransportStreamCut
+				o.event.IsError = true
+				o.transportErr = err
+				o.event.StatusCode = 0
 			}
-			o.event.Transport = rules.TransportStreamCut
-			o.event.IsError = true
-			o.transportErr = err
-			o.event.StatusCode = 0
 		}
-		return o // 首字节前失败：可重试
+		resp.Body.Close()
+		cancel()
+		return fail()
 	}
 	o.ttftMs = elapsed
 	o.event.TTFTMs = elapsed
+	la.first = first
+	return la
+}
+
+// deliver 把已 dial 成功的 attempt 交付客户端（写 w）。
+func (s *Server) deliver(w http.ResponseWriter, la *liveAttempt, reqModel string) *attemptOutcome {
+	o := la.o
+	defer func() { o.latencyMs = time.Since(la.start).Milliseconds() }()
+
+	// 非流式：dial 已读取全量 body，直接写出
+	if la.hasWhole {
+		body := la.whole
+		if la.clientStream {
+			// 客户端要流式但上游给了整包：包装成单 chunk SSE
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.WriteHeader(http.StatusOK)
+			o.firstByteSent = true
+			fmt.Fprintf(w, "data: %s\n\ndata: [DONE]\n\n", body)
+		} else {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write(rewriteModelField(body, reqModel))
+		}
+		o.delivered = true
+		return o
+	}
+
+	defer la.resp.Body.Close()
+	reader := la.reader
+	cand := la.cand
+	// clientGone：客户端已断开（区别于上游断流，不应标错误/重试）
+	clientGone := func() bool { return la.clientCtx.Err() != nil }
 
 	// tee 旁路：仅当存在可能命中成功响应 body 的规则
 	var tee *bytes.Buffer
@@ -477,10 +567,10 @@ func (s *Server) deliverStream(clientCtx context.Context, w http.ResponseWriter,
 		}
 	}
 
-	if aggregate {
+	if la.aggregate {
 		// 聚合模式：所有 chunk 读完前不写客户端 → 全程可重试
 		agg := &aggregator{}
-		chunk := first
+		chunk := la.first
 		for {
 			if chunk.done {
 				break
@@ -536,7 +626,7 @@ func (s *Server) deliverStream(clientCtx context.Context, w http.ResponseWriter,
 		return true
 	}
 	o.firstByteSent = true
-	chunk := first
+	chunk := la.first
 	for {
 		if chunk.data != nil {
 			teeWrite(chunk.data)
