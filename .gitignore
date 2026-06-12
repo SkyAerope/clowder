@@ -1,0 +1,30 @@
+# 设计文档不入库
+DESIGN.md
+
+# 构建产物
+/clowder
+/bin/
+dist/
+
+# 运行时数据
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.pid
+*.log
+
+# 敏感文件：static provider 的 key 列表
+providers/*/keys.txt
+
+# Python (uv)
+.venv/
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+
+# 编辑器
+.idea/
+.vscode/
