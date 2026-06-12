@@ -57,6 +57,34 @@ func (s *sseReader) next() (*sseChunk, error) {
 	return &sseChunk{raw: raw.Bytes(), data: data}, nil
 }
 
+// newModelRewriter 返回一个就地重写 sseChunk 中 model 字段的函数：
+// 把上游原生模型名替换为 canonical 名，避免向客户端泄漏上游信息。
+func newModelRewriter(native, canonical string) func(*sseChunk) {
+	if native == "" || canonical == "" || native == canonical {
+		return func(*sseChunk) {}
+	}
+	patterns := [][2][]byte{
+		{[]byte(`"model":"` + native + `"`), []byte(`"model":"` + canonical + `"`)},
+		{[]byte(`"model": "` + native + `"`), []byte(`"model": "` + canonical + `"`)},
+	}
+	return func(c *sseChunk) {
+		if c.data == nil {
+			return
+		}
+		for _, p := range patterns {
+			if bytes.Contains(c.data, p[0]) {
+				c.data = bytes.Replace(c.data, p[0], p[1], 1)
+				raw := make([]byte, 0, len(c.data)+8)
+				raw = append(raw, []byte("data: ")...)
+				raw = append(raw, c.data...)
+				raw = append(raw, '\n', '\n')
+				c.raw = raw
+				return
+			}
+		}
+	}
+}
+
 // aggregator 把流式 SSE 聚合为一个非流式 chat.completion 响应。
 type aggregator struct {
 	id        string

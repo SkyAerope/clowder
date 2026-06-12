@@ -513,7 +513,10 @@ func (s *Server) deliverStream(w http.ResponseWriter, resp *http.Response, o *at
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
 	flusher, _ := w.(http.Flusher)
+	// 重写 chunk 中的上游原生 model 名为 canonical 名，避免泄漏上游信息
+	rewriteModel := newModelRewriter(cand.Native, reqModel)
 	writeChunk := func(c *sseChunk) bool {
+		rewriteModel(c)
 		if _, err := w.Write(c.raw); err != nil {
 			return false // 客户端断开
 		}
