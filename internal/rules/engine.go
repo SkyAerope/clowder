@@ -27,6 +27,9 @@ type Event struct {
 	AttemptNo        int
 	KeySwitches      int
 	ProviderSwitches int
+
+	// FingerprintCache 由调用方填充的错误指纹缓存（避免重复计算）。
+	FingerprintCache string
 }
 
 // Engine 持有规则全集（来源混合）并执行匹配。

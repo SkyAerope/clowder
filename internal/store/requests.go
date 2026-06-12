@@ -7,19 +7,19 @@ import (
 
 // RequestLog 对应 requests 表一行（一次上游 attempt）。
 type RequestLog struct {
-	ID               int64   `json:"id"`
-	TraceID          string  `json:"trace_id"`
-	AttemptNo        int     `json:"attempt_no"`
-	KeyID            *int64  `json:"key_id,omitempty"`
-	Provider         string  `json:"provider"`
-	Model            string  `json:"model"`
-	StatusCode       *int    `json:"status_code,omitempty"`
-	TTFTMs           *int64  `json:"ttft_ms,omitempty"`
-	LatencyMs        *int64  `json:"latency_ms,omitempty"`
-	MatchedRule      string  `json:"matched_rule,omitempty"`
-	ErrorMsg         string  `json:"error_msg,omitempty"`
-	ErrorFingerprint string  `json:"error_fingerprint,omitempty"`
-	CreatedAt        string  `json:"created_at"`
+	ID               int64  `json:"id"`
+	TraceID          string `json:"trace_id"`
+	AttemptNo        int    `json:"attempt_no"`
+	KeyID            *int64 `json:"key_id,omitempty"`
+	Provider         string `json:"provider"`
+	Model            string `json:"model"`
+	StatusCode       *int   `json:"status_code,omitempty"`
+	TTFTMs           *int64 `json:"ttft_ms,omitempty"`
+	LatencyMs        *int64 `json:"latency_ms,omitempty"`
+	MatchedRule      string `json:"matched_rule,omitempty"`
+	ErrorMsg         string `json:"error_msg,omitempty"`
+	ErrorFingerprint string `json:"error_fingerprint,omitempty"`
+	CreatedAt        string `json:"created_at"`
 }
 
 // InsertRequest 写入一条 attempt 日志。
@@ -96,8 +96,8 @@ type ErrorGroup struct {
 	Fingerprint string `json:"fingerprint"`
 	Provider    string `json:"provider"`
 	StatusCode  *int   `json:"status_code,omitempty"`
-	Models      string `json:"models"`       // 逗号拼接的去重模型列表
-	Rules       string `json:"rules"`        // 逗号拼接的去重命中规则
+	Models      string `json:"models"` // 逗号拼接的去重模型列表
+	Rules       string `json:"rules"`  // 逗号拼接的去重命中规则
 	Count       int64  `json:"count"`
 	FirstSeen   string `json:"first_seen"`
 	LastSeen    string `json:"last_seen"`
