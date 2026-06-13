@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { api, refreshSession } from '../api'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Cat } from 'lucide-vue-next'
 
 const router = useRouter()
+const route = useRoute()
 const adminKey = ref('')
 const error = ref('')
 const loading = ref(false)
@@ -18,7 +19,8 @@ async function login() {
   try {
     await api.post('/api/login', { admin_key: adminKey.value })
     await refreshSession()
-    router.push('/dashboard')
+    const redirect = (route.query.redirect as string) || '/dashboard'
+    router.push(redirect)
   } catch (e: any) {
     error.value = e.message
   } finally {

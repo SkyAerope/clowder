@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { api, type RequestLog } from '../api'
+import TableSkeleton from '../components/TableSkeleton.vue'
 import { Button } from '@/components/ui/button'
 import {
   Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow,
@@ -11,6 +12,7 @@ import {
 import { RefreshCw, ChevronLeft, ChevronRight, GitBranch } from 'lucide-vue-next'
 
 const logs = ref<RequestLog[]>([])
+const loaded = ref(false)
 const offset = ref(0)
 const limit = 50
 const trace = ref<RequestLog[] | null>(null)
@@ -18,7 +20,11 @@ const traceID = ref('')
 const traceOpen = ref(false)
 
 async function load() {
-  logs.value = (await api.get<RequestLog[]>(`/api/admin/requests?limit=${limit}&offset=${offset.value}`)) ?? []
+  try {
+    logs.value = (await api.get<RequestLog[]>(`/api/admin/requests?limit=${limit}&offset=${offset.value}`)) ?? []
+  } finally {
+    loaded.value = true
+  }
 }
 
 async function showTrace(id: string) {
@@ -60,7 +66,8 @@ onMounted(load)
             <TableHead>TTFT</TableHead><TableHead>耗时</TableHead><TableHead>命中规则</TableHead><TableHead>错误</TableHead>
           </TableRow>
         </TableHeader>
-        <TableBody>
+        <TableSkeleton v-if="!loaded" :cols="10" />
+        <TableBody v-else>
           <TableRow v-for="l in logs" :key="l.id">
             <TableCell class="text-xs whitespace-nowrap">{{ new Date(l.created_at + 'Z').toLocaleString() }}</TableCell>
             <TableCell>

@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -500,5 +501,17 @@ onMounted(load)
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  </div>
+
+  <div v-else class="space-y-4">
+    <div class="flex items-center gap-2">
+      <Skeleton class="size-8 rounded-md" />
+      <Skeleton class="h-7 w-48" />
+    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <Skeleton class="h-56 w-full rounded-xl" />
+      <Skeleton class="h-56 w-full rounded-xl" />
+    </div>
+    <Skeleton class="h-64 w-full rounded-xl" />
   </div>
 </template>

@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Save, RotateCw, Plus, Trash2 } from 'lucide-vue-next'
 
@@ -65,6 +66,7 @@ const modelPatterns = ref<ModelPattern[]>([])
 const msg = ref('')
 const saving = ref(false)
 const reloading = ref(false)
+const loaded = ref(false)
 const tab = ref<'visual' | 'source'>('visual')
 const parseError = ref('')
 
@@ -216,10 +218,14 @@ function removePattern(i: number) { modelPatterns.value.splice(i, 1) }
 
 // ---------- 加载/保存/重载 ----------
 async function load() {
-  const r = await api.get<{ config_yaml: string; models_yaml: string }>('/api/admin/config')
-  configYaml.value = r.config_yaml
-  modelsYaml.value = r.models_yaml
-  refreshForms()
+  try {
+    const r = await api.get<{ config_yaml: string; models_yaml: string }>('/api/admin/config')
+    configYaml.value = r.config_yaml
+    modelsYaml.value = r.models_yaml
+    refreshForms()
+  } finally {
+    loaded.value = true
+  }
 }
 
 async function save() {
@@ -271,7 +277,15 @@ onMounted(load)
       <AlertDescription>{{ msg }}</AlertDescription>
     </Alert>
 
-    <Tabs v-model="tab">
+    <div v-if="!loaded" class="space-y-4">
+      <Skeleton class="h-9 w-48" />
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <Skeleton class="h-64 w-full rounded-xl" />
+        <Skeleton class="h-64 w-full rounded-xl" />
+      </div>
+    </div>
+
+    <Tabs v-else v-model="tab">
       <TabsList>
         <TabsTrigger value="visual">可视化</TabsTrigger>
         <TabsTrigger value="source">源文件</TabsTrigger>

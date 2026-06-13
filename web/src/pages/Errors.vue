@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, type ErrorGroup } from '../api'
+import TableSkeleton from '../components/TableSkeleton.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -16,6 +17,7 @@ import { RefreshCw, BookmarkPlus, Camera } from 'lucide-vue-next'
 
 const router = useRouter()
 const groups = ref<ErrorGroup[]>([])
+const loaded = ref(false)
 const ruleFilter = ref('')
 const dialog = ref<{ group: ErrorGroup; yaml: string } | null>(null)
 const dialogOpen = ref(false)
@@ -23,7 +25,11 @@ const msg = ref('')
 
 async function load() {
   const q = ruleFilter.value ? `?rule=${encodeURIComponent(ruleFilter.value)}` : ''
-  groups.value = (await api.get<ErrorGroup[]>(`/api/admin/errors${q}`)) ?? []
+  try {
+    groups.value = (await api.get<ErrorGroup[]>(`/api/admin/errors${q}`)) ?? []
+  } finally {
+    loaded.value = true
+  }
 }
 
 function makeRuleYAML(g: ErrorGroup): string {
@@ -92,7 +98,8 @@ onMounted(load)
             <TableHead>最近出现</TableHead><TableHead>样例</TableHead><TableHead class="text-right">操作</TableHead>
           </TableRow>
         </TableHeader>
-        <TableBody>
+        <TableSkeleton v-if="!loaded" :cols="9" />
+        <TableBody v-else>
           <TableRow v-for="g in groups" :key="g.fingerprint">
             <TableCell class="font-mono text-xs">{{ g.fingerprint.slice(0, 12) }}</TableCell>
             <TableCell>{{ g.provider }}</TableCell>

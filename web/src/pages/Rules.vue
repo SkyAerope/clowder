@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -128,6 +129,7 @@ const warnings = ref<{ rule: string; message: string }[]>([])
 const presets = ref<RulePreset[]>([])
 const msg = ref('')
 const saving = ref(false)
+const loaded = ref(false)
 const tab = ref<'visual' | 'source'>('visual')
 const draft = ref<EditRule[]>([])
 const parseError = ref('')
@@ -460,16 +462,20 @@ function toggleRace(e: EditRule, v: string) {
 
 // ---------- 加载/保存/预设 ----------
 async function load() {
-  const r = await api.get<{ yaml: string; rules: RuleView[]; warnings: { rule: string; message: string }[] }>('/api/admin/rules')
-  yamlText.value = r.yaml
-  rules.value = r.rules ?? []
-  warnings.value = r.warnings ?? []
-  presets.value = (await api.get<RulePreset[]>('/api/admin/rules/presets')) ?? []
-  addedPresets.value = new Set()
-  refreshDraft()
-  serializeDraft()
-  await nextTick()
-  savedYaml.value = yamlText.value
+  try {
+    const r = await api.get<{ yaml: string; rules: RuleView[]; warnings: { rule: string; message: string }[] }>('/api/admin/rules')
+    yamlText.value = r.yaml
+    rules.value = r.rules ?? []
+    warnings.value = r.warnings ?? []
+    presets.value = (await api.get<RulePreset[]>('/api/admin/rules/presets')) ?? []
+    addedPresets.value = new Set()
+    refreshDraft()
+    serializeDraft()
+    await nextTick()
+    savedYaml.value = yamlText.value
+  } finally {
+    loaded.value = true
+  }
 }
 
 async function save() {
@@ -546,7 +552,13 @@ onBeforeRouteLeave(() => {
       </AlertDescription>
     </Alert>
 
-    <Tabs v-model="tab">
+    <div v-if="!loaded" class="space-y-3">
+      <Skeleton class="h-9 w-48" />
+      <Skeleton class="h-40 w-full rounded-xl" />
+      <Skeleton class="h-40 w-full rounded-xl" />
+    </div>
+
+    <Tabs v-else v-model="tab">
       <TabsList>
         <TabsTrigger value="visual">可视化</TabsTrigger>
         <TabsTrigger value="source">源文件</TabsTrigger>

@@ -3,6 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, type Provider } from '../api'
 import StatusBadge from '../components/StatusBadge.vue'
+import TableSkeleton from '../components/TableSkeleton.vue'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
@@ -13,6 +14,7 @@ import { RefreshCw, ChevronRight } from 'lucide-vue-next'
 const router = useRouter()
 const providers = ref<Provider[]>([])
 const loading = ref(false)
+const loaded = ref(false)
 const msg = ref('')
 
 async function load() {
@@ -24,6 +26,7 @@ async function load() {
     msg.value = e.message
   } finally {
     loading.value = false
+    loaded.value = true
   }
 }
 
@@ -56,7 +59,8 @@ onMounted(load)
             <TableHead class="text-right">管理</TableHead>
           </TableRow>
         </TableHeader>
-        <TableBody>
+        <TableSkeleton v-if="!loaded" :cols="7" />
+        <TableBody v-else>
           <TableRow v-for="p in providers" :key="p.name" class="cursor-pointer" @click="open(p)">
             <TableCell class="font-medium">{{ p.display_name || p.name }}</TableCell>
             <TableCell><StatusBadge :status="p.status" /></TableCell>

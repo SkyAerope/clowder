@@ -6,10 +6,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { RefreshCw, ShieldCheck } from 'lucide-vue-next'
 
 const route = useRoute()
 const captures = ref<Capture[]>([])
+const loaded = ref(false)
 const ruleFilter = ref('')
 const fpFilter = ref((route.query.fingerprint as string) || '')
 const expanded = ref<number | null>(null)
@@ -19,7 +21,11 @@ async function load() {
   if (ruleFilter.value) params.set('rule', ruleFilter.value)
   if (fpFilter.value) params.set('fingerprint', fpFilter.value)
   const q = params.toString() ? `?${params}` : ''
-  captures.value = (await api.get<Capture[]>(`/api/admin/captures${q}`)) ?? []
+  try {
+    captures.value = (await api.get<Capture[]>(`/api/admin/captures${q}`)) ?? []
+  } finally {
+    loaded.value = true
+  }
 }
 
 function pretty(s?: string) {
@@ -46,7 +52,18 @@ onMounted(load)
     </div>
 
     <div class="space-y-2">
-      <Card v-for="c in captures" :key="c.id" class="py-0 gap-0">
+      <template v-if="!loaded">
+        <Card v-for="i in 5" :key="i" class="py-0 gap-0">
+          <div class="flex items-center gap-3 p-3">
+            <Skeleton class="h-4 w-8" />
+            <Skeleton class="h-4 w-24" />
+            <Skeleton class="h-5 w-20 rounded-full" />
+            <Skeleton class="ml-auto h-4 w-32" />
+          </div>
+        </Card>
+      </template>
+      <template v-else>
+        <Card v-for="c in captures" :key="c.id" class="py-0 gap-0">
         <button class="w-full flex items-center gap-3 p-3 text-sm text-left hover:bg-muted/50"
           @click="expanded = expanded === c.id ? null : c.id">
           <span class="text-muted-foreground">#{{ c.id }}</span>
@@ -77,7 +94,8 @@ onMounted(load)
           </div>
         </div>
       </Card>
-      <Card v-if="!captures.length" class="p-6 text-center text-sm text-muted-foreground">暂无抓取记录</Card>
+        <Card v-if="!captures.length" class="p-6 text-center text-sm text-muted-foreground">暂无抓取记录</Card>
+      </template>
     </div>
   </div>
 </template>

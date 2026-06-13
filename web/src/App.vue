@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { session, refreshSession, api } from './api'
+import { session, refreshSession, ensureSession, api } from './api'
 import {
   LayoutDashboard, Boxes, ScrollText, AlertTriangle,
   Camera, SlidersHorizontal, Settings, LogOut, LogIn, Cat, Menu,
@@ -14,7 +14,7 @@ import { Toaster } from '@/components/ui/sonner'
 const router = useRouter()
 const mobileOpen = ref(false)
 
-onMounted(refreshSession)
+onMounted(ensureSession)
 
 async function logout() {
   await api.post('/api/logout')

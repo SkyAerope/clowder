@@ -37,6 +37,14 @@ export async function refreshSession() {
   }
 }
 
+let sessionPromise: Promise<void> | null = null
+
+// ensureSession 保证 session 至少被拉取过一次（首次导航/守卫使用），并复用同一个 in-flight 请求。
+export function ensureSession(): Promise<void> {
+  if (!sessionPromise) sessionPromise = refreshSession()
+  return sessionPromise
+}
+
 // ---- 类型 ----
 export interface Provider {
   name: string
