@@ -1,6 +1,4 @@
 name: build
-
-# 仅构建二进制（含内嵌前端），不构建/推送容器镜像。
 # 推送 tag（v*）时额外把各平台二进制发布到 GitHub Release。
 
 on:
@@ -58,8 +56,8 @@ jobs:
         include:
           - { goos: linux, goarch: amd64 }
           - { goos: linux, goarch: arm64 }
-          - { goos: darwin, goarch: amd64 }
-          - { goos: darwin, goarch: arm64 }
+          # - { goos: darwin, goarch: amd64 }
+          # - { goos: darwin, goarch: arm64 }
     steps:
       - uses: actions/checkout@v4
 
