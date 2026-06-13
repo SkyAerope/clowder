@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@lucide/vue": "^1.18.0",
     "@phosphor-icons/vue": "^2.2.1",
     "@tanstack/vue-table": "^8.21.3",
     "@vueuse/core": "^14.3.0",

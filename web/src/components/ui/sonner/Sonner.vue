@@ -1,12 +1,12 @@
 <script lang="ts" setup>
 import {
-  PhCheckCircle,
-  PhInfo,
-  PhWarning,
-  PhXCircle,
-  PhCircleNotch,
-  PhX,
-} from '@phosphor-icons/vue';
+  CircleCheckIcon,
+  InfoIcon,
+  TriangleAlertIcon,
+  OctagonXIcon,
+  Loader2Icon,
+  XIcon,
+} from '@lucide/vue';
 
 
 import type { ToasterProps } from "vue-sonner"
@@ -32,30 +32,30 @@ const props = defineProps<ToasterProps>()
     }"
     :toast-options="{
       classes: {
-        toast: 'rounded-none',
+        toast: 'rounded-2xl',
       },
     }"
     v-bind="props"
   >
     <template #success-icon>
-      <PhCheckCircle class="size-4" />
+      <CircleCheckIcon class="size-4" />
     </template>
     <template #info-icon>
-      <PhInfo class="size-4" />
+      <InfoIcon class="size-4" />
     </template>
     <template #warning-icon>
-      <PhWarning class="size-4" />
+      <TriangleAlertIcon class="size-4" />
     </template>
     <template #error-icon>
-      <PhXCircle class="size-4" />
+      <OctagonXIcon class="size-4" />
     </template>
     <template #loading-icon>
       <div>
-        <PhCircleNotch class="size-4 animate-spin" />
+        <Loader2Icon class="size-4 animate-spin" />
       </div>
     </template>
     <template #close-icon>
-      <PhX class="size-4" />
+      <XIcon class="size-4" />
     </template>
   </Sonner>
 </template>
