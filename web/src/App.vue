@@ -3,7 +3,7 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { session, refreshSession, api } from './api'
 import {
-  LayoutDashboard, KeyRound, ScrollText, AlertTriangle,
+  LayoutDashboard, Boxes, ScrollText, AlertTriangle,
   Camera, SlidersHorizontal, Settings, LogOut, LogIn, Cat, Menu,
 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
@@ -24,7 +24,7 @@ async function logout() {
 
 const navItems = [
   { to: '/dashboard', label: '看板', icon: LayoutDashboard, admin: false },
-  { to: '/keys', label: 'Key 管理', icon: KeyRound, admin: true },
+  { to: '/providers', label: '提供商管理', icon: Boxes, admin: true },
   { to: '/requests', label: '请求日志', icon: ScrollText, admin: true },
   { to: '/errors', label: '错误聚合', icon: AlertTriangle, admin: true },
   { to: '/captures', label: '抓取记录', icon: Camera, admin: true },

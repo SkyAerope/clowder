@@ -5,7 +5,7 @@ import './style.css'
 
 import Dashboard from './pages/Dashboard.vue'
 import Login from './pages/Login.vue'
-import Keys from './pages/Keys.vue'
+import Providers from './pages/Providers.vue'
 import ProviderDetail from './pages/ProviderDetail.vue'
 import Requests from './pages/Requests.vue'
 import Errors from './pages/Errors.vue'
@@ -19,7 +19,7 @@ const router = createRouter({
     { path: '/', redirect: '/dashboard' },
     { path: '/dashboard', component: Dashboard },
     { path: '/login', component: Login },
-    { path: '/keys', component: Keys },
+    { path: '/providers', component: Providers },
     { path: '/providers/:name', component: ProviderDetail },
     { path: '/requests', component: Requests },
     { path: '/errors', component: Errors },

@@ -4,13 +4,15 @@ import { useRoute } from 'vue-router'
 import { api, type KeyRow } from '../api'
 import Card from '../components/Card.vue'
 import StatusBadge from '../components/StatusBadge.vue'
+import CopyButton from '../components/CopyButton.vue'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
-import { RefreshCw, Plus, Stethoscope } from 'lucide-vue-next'
+import { RefreshCw, Plus, Stethoscope, Ban, CircleCheck, ArrowLeft } from 'lucide-vue-next'
+import { RouterLink } from 'vue-router'
 
 const route = useRoute()
 const name = route.params.name as string
@@ -30,6 +32,7 @@ const msg = ref('')
 const registering = ref(false)
 const refreshing = ref(false)
 const checking = ref(false)
+const busy = ref<Record<number, boolean>>({})
 
 async function load() {
   detail.value = await api.get<Detail>(`/api/admin/providers/${name}`)
@@ -63,6 +66,19 @@ async function refreshModels() {
   }
 }
 
+async function keyAction(k: KeyRow, act: 'disable' | 'enable' | 'check') {
+  busy.value[k.id] = true
+  msg.value = ''
+  try {
+    await api.post(`/api/admin/keys/${k.id}/${act}`)
+    await load()
+  } catch (e: any) {
+    msg.value = `key #${k.id} ${act} 失败: ${e.message}`
+  } finally {
+    busy.value[k.id] = false
+  }
+}
+
 async function checkAll() {
   checking.value = true
   msg.value = ''
@@ -90,7 +106,12 @@ onMounted(load)
 <template>
   <div v-if="detail" class="space-y-4">
     <div class="flex items-center justify-between flex-wrap gap-2">
-      <h1 class="text-xl font-semibold">{{ detail.manifest.display_name || name }}</h1>
+      <div class="flex items-center gap-2">
+        <Button as-child variant="ghost" size="icon-sm" title="返回提供商列表">
+          <RouterLink to="/providers"><ArrowLeft class="size-4" /></RouterLink>
+        </Button>
+        <h1 class="text-xl font-semibold">{{ detail.manifest.display_name || name }}</h1>
+      </div>
       <div class="flex gap-2">
         <Button v-if="detail.manifest.has_check" variant="outline" size="sm" :disabled="checking" @click="checkAll">
           <Stethoscope class="size-4" :class="checking && 'animate-pulse'" /> 全部 check
@@ -144,18 +165,45 @@ onMounted(load)
             <TableRow>
               <TableHead>ID</TableHead><TableHead>Key</TableHead><TableHead>Email</TableHead>
               <TableHead>状态</TableHead><TableHead>限流次数</TableHead><TableHead>最后使用</TableHead>
+              <TableHead class="text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             <TableRow v-for="k in detail.keys" :key="k.id">
               <TableCell class="text-muted-foreground">#{{ k.id }}</TableCell>
-              <TableCell class="font-mono text-xs break-all max-w-64">{{ k.api_key }}</TableCell>
-              <TableCell class="font-mono text-xs">{{ k.email || '—' }}</TableCell>
+              <TableCell>
+                <div class="flex items-center gap-1">
+                  <span class="font-mono text-xs truncate max-w-48" :title="k.api_key">{{ k.api_key }}</span>
+                  <CopyButton :value="k.api_key" label="Key" />
+                </div>
+              </TableCell>
+              <TableCell>
+                <div v-if="k.email" class="flex items-center gap-1">
+                  <span class="font-mono text-xs truncate max-w-48" :title="k.email">{{ k.email }}</span>
+                  <CopyButton :value="k.email" label="Email" />
+                </div>
+                <span v-else class="text-muted-foreground">—</span>
+              </TableCell>
               <TableCell><StatusBadge :status="k.status" /></TableCell>
               <TableCell>{{ k.rate_limit_count }}</TableCell>
               <TableCell class="text-xs">{{ fmtTime(k.last_used_at) }}</TableCell>
+              <TableCell>
+                <div class="flex justify-end gap-1">
+                  <Button variant="ghost" size="icon-sm" title="一键 check" :disabled="busy[k.id]" @click="keyAction(k, 'check')">
+                    <Stethoscope class="size-4" :class="busy[k.id] && 'animate-pulse'" />
+                  </Button>
+                  <Button v-if="k.status !== 'invalid'" variant="ghost" size="icon-sm" class="text-destructive" title="禁用"
+                    :disabled="busy[k.id]" @click="keyAction(k, 'disable')">
+                    <Ban class="size-4" />
+                  </Button>
+                  <Button v-else variant="ghost" size="icon-sm" class="text-success" title="启用"
+                    :disabled="busy[k.id]" @click="keyAction(k, 'enable')">
+                    <CircleCheck class="size-4" />
+                  </Button>
+                </div>
+              </TableCell>
             </TableRow>
-            <TableEmpty v-if="!detail.keys?.length" :colspan="6">暂无 key</TableEmpty>
+            <TableEmpty v-if="!detail.keys?.length" :colspan="7">暂无 key</TableEmpty>
           </TableBody>
         </Table>
       </div>
