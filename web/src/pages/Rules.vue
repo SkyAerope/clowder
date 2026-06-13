@@ -18,6 +18,9 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem,
+} from '@/components/ui/dropdown-menu'
 import { Save, TriangleAlert, Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-vue-next'
 
 // ---------- 可视化编辑模型 ----------
@@ -58,8 +61,13 @@ const ROUTES: Opt[] = [
   { v: 'next_provider', label: '换下一个 Provider' },
   { v: 'retry_same', label: '重试当前' },
   { v: 'passthrough', label: '透传响应' },
+  { v: 'wait', label: '继续等待' },
 ]
-const RACE_ROUTES = ROUTES.filter((r) => r.v !== 'passthrough')
+const RACE_ROUTES = ROUTES.filter((r) => r.v !== 'passthrough' && r.v !== 'wait')
+// 一次 attempt 只有一种结局：TTFT 超时（上游未返回）/ 传输错误 / 收到响应 / 任意错误。
+// 故 ttft_over_ms 与下列「已出结局」字段（以及另一个 ttft）全部互斥，AND 语义下永不同真。
+const TTFT_FIELD = 'ttft_over_ms'
+const TTFT_EXCLUSIVE = ['status_code', 'body', 'transport', 'error']
 const TRANSPORTS: Opt[] = [
   { v: 'true', label: '任意传输错误' },
   { v: 'dns_failure', label: 'DNS 解析失败' },
@@ -101,6 +109,13 @@ const CHECK_STATUS: Opt[] = [
   { v: 'error', label: '错误 error' },
 ]
 const CAPTURE_FIELDS = ['request_headers', 'request_body', 'response_headers', 'response_body', 'status_code']
+const CAPTURE_LABELS: Record<string, string> = {
+  request_headers: '请求头',
+  request_body: '请求体',
+  response_headers: '响应头',
+  response_body: '响应体',
+  status_code: 'Status Code',
+}
 const TYPE_LABELS: Record<string, string> = { upstream: '上游', check: '探活', schedule: '定时' }
 
 function lbl(arr: Opt[], v: string): string {
@@ -355,8 +370,9 @@ function summarize(e: EditRule): string {
   return `当 ${cond} 时${acts.length ? ' ' + acts.join(' 并 ') : ''}`
 }
 
-// 可视化编辑时，draft 变化 -> 同步回 yamlText
+// 可视化编辑时，draft 变化 -> 规范化约束后同步回 yamlText
 watch(draft, () => {
+  for (const e of draft.value) normalizeRule(e)
   if (tab.value === 'visual') serializeDraft()
 }, { deep: true })
 
@@ -393,9 +409,37 @@ function addRule() {
   expanded.value.add(e._uid)
 }
 function removeRule(i: number) { draft.value.splice(i, 1) }
+// ---------- 互斥 / 无意义动作约束 ----------
+function whenHasTTFT(e: EditRule): boolean {
+  return e.whenType === 'upstream' && e.whenClauses.some((c) => c.field === TTFT_FIELD)
+}
+// 某 when 字段是否与「其它」子句冲突：ttft 与 ttft / 已出结局字段互斥。
+function fieldConflicts(optV: string, others: string[]): boolean {
+  if (optV === TTFT_FIELD) return others.some((f) => f === TTFT_FIELD || TTFT_EXCLUSIVE.includes(f))
+  if (TTFT_EXCLUSIVE.includes(optV)) return others.includes(TTFT_FIELD)
+  return false
+}
+// 该选项在某子句的下拉中是否应禁用（自身当前值始终可选）。
+function whenFieldDisabled(e: EditRule, clause: WhenClause, optV: string): boolean {
+  if (optV === clause.field) return false
+  return fieldConflicts(optV, e.whenClauses.filter((c) => c !== clause).map((c) => c.field))
+}
+// 路由单选项是否对当前 when 无意义（灰显禁用）：passthrough 与 wait 互补，由是否含 TTFT 决定。
+function routeDisabled(e: EditRule, v: string): boolean {
+  if (v === 'passthrough') return whenHasTTFT(e)
+  if (v === 'wait') return !whenHasTTFT(e)
+  return false
+}
+// 已选路由失效时回退到合法默认值。
+function normalizeRule(e: EditRule) {
+  if (e.routeMode === 'single' && routeDisabled(e, e.routeSingle)) {
+    e.routeSingle = whenHasTTFT(e) ? 'next_provider' : 'passthrough'
+  }
+}
 function addWhenClause(e: EditRule) {
   const used = new Set(e.whenClauses.map((c) => c.field))
-  const next = WHEN_FIELDS.find((f) => !used.has(f.v)) ?? WHEN_FIELDS[0]
+  const others = e.whenClauses.map((c) => c.field)
+  const next = WHEN_FIELDS.find((f) => !used.has(f.v) && !fieldConflicts(f.v, others)) ?? WHEN_FIELDS[0]
   e.whenClauses.push({ field: next.v, text: next.v === 'transport' ? 'true' : '', regex: false })
 }
 function removeWhenClause(e: EditRule, i: number) { e.whenClauses.splice(i, 1) }
@@ -408,8 +452,11 @@ function toggleField(a: EditAction, f: string) {
   if (i >= 0) a.fields.splice(i, 1)
   else a.fields.push(f)
 }
-function addRace(e: EditRule) { e.routeRace.push('next_key') }
-function removeRace(e: EditRule, i: number) { e.routeRace.splice(i, 1) }
+function toggleRace(e: EditRule, v: string) {
+  const i = e.routeRace.indexOf(v)
+  if (i >= 0) e.routeRace.splice(i, 1)
+  else e.routeRace.push(v)
+}
 
 // ---------- 加载/保存/预设 ----------
 async function load() {
@@ -528,28 +575,28 @@ onBeforeRouteLeave(() => {
                 </div>
               </div>
             </button>
-            <Switch v-model="e.enabled" class="mt-1 shrink-0" title="启用 / 停用此规则" />
+            <div class="mt-1 flex shrink-0 flex-col items-center gap-2">
+              <Switch v-model="e.enabled" title="启用 / 停用此规则" />
+              <Button v-if="expanded.has(e._uid)" variant="ghost" size="icon-sm" class="text-destructive" title="删除规则" @click="removeRule(ri)">
+                <Trash2 class="size-4" />
+              </Button>
+            </div>
           </div>
 
           <!-- 展开编辑面板 -->
           <div v-if="expanded.has(e._uid)" class="space-y-3 border-t border-foreground/10 p-3">
-            <div class="flex items-center gap-2">
-              <Input v-model="e.name" placeholder="规则名（英文标识）" class="font-mono" />
-              <Button variant="ghost" size="icon-sm" class="text-destructive shrink-0" title="删除规则" @click="removeRule(ri)">
-                <Trash2 class="size-4" />
-              </Button>
-            </div>
+            <Input v-model="e.name" placeholder="规则名（英文标识）" class="font-mono" />
             <Input v-model="e.description" placeholder="描述（显示为标题）" />
 
-            <div class="grid grid-cols-2 gap-3">
+            <div class="flex flex-wrap items-end gap-3">
               <div class="space-y-1">
                 <Label class="text-xs text-muted-foreground">优先级（越小越优先）</Label>
-                <Input v-model.number="e.priority" type="number" />
+                <Input v-model.number="e.priority" type="number" class="w-28" />
               </div>
               <div class="space-y-1">
                 <Label class="text-xs text-muted-foreground">触发类型 (when)</Label>
                 <Select v-model="e.whenType">
-                  <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
+                  <SelectTrigger class="w-40"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="upstream">上游结果</SelectItem>
                     <SelectItem value="check">探活结果</SelectItem>
@@ -560,17 +607,14 @@ onBeforeRouteLeave(() => {
             </div>
 
             <!-- upstream：条件列表 -->
-            <div v-if="e.whenType === 'upstream'" class="space-y-2 rounded-lg border border-dashed border-foreground/20 p-3">
-              <div class="flex items-center justify-between">
-                <Label class="text-xs text-muted-foreground">触发条件 (when)</Label>
-                <Button variant="ghost" size="xs" @click="addWhenClause(e)"><Plus class="size-3" /> 加条件</Button>
-              </div>
+            <div v-if="e.whenType === 'upstream'" class="space-y-2">
+              <Label class="text-xs text-muted-foreground">触发条件 (when)</Label>
               <p v-if="!e.whenClauses.length" class="text-xs text-muted-foreground">未设条件 = 匹配任意请求</p>
               <div v-for="(c, ci) in e.whenClauses" :key="ci" class="flex flex-wrap items-center gap-2">
                 <Select v-model="c.field">
                   <SelectTrigger class="w-40"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem v-for="f in WHEN_FIELDS" :key="f.v" :value="f.v">{{ f.label }}</SelectItem>
+                    <SelectItem v-for="f in WHEN_FIELDS" :key="f.v" :value="f.v" :disabled="whenFieldDisabled(e, c, f.v)">{{ f.label }}</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select v-if="c.field === 'transport'" v-model="c.text">
@@ -594,13 +638,14 @@ onBeforeRouteLeave(() => {
                   <Trash2 class="size-4" />
                 </Button>
               </div>
+              <button type="button" class="text-muted-foreground hover:text-foreground hover:border-foreground/30 flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-foreground/20 py-1.5 text-xs" @click="addWhenClause(e)">
+                <Plus class="size-3" /> 加条件
+              </button>
             </div>
-
-            <!-- check 字段 -->
-            <div v-else-if="e.whenType === 'check'" class="rounded-lg border border-dashed border-foreground/20 p-3 space-y-1">
-              <Label class="text-xs text-muted-foreground">探活状态命中</Label>
+            <div v-else-if="e.whenType === 'check'" class="space-y-2">
+              <Label class="text-xs text-muted-foreground">触发条件 (when)：探活状态命中</Label>
               <Select v-model="e.check_status">
-                <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
+                <SelectTrigger class="w-56"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem v-for="s in CHECK_STATUS" :key="s.v" :value="s.v">{{ s.label }}</SelectItem>
                 </SelectContent>
@@ -608,23 +653,23 @@ onBeforeRouteLeave(() => {
             </div>
 
             <!-- schedule 字段 -->
-            <div v-else class="grid grid-cols-2 gap-3 rounded-lg border border-dashed border-foreground/20 p-3">
-              <div class="space-y-1">
-                <Label class="text-xs text-muted-foreground">cron 表达式</Label>
-                <Input v-model="e.cron" class="font-mono" placeholder="0 */6 * * *" />
-              </div>
-              <div class="space-y-1">
-                <Label class="text-xs text-muted-foreground">scope provider（可选）</Label>
-                <Input v-model="e.scope_provider" placeholder="限定 provider" />
+            <div v-else class="space-y-2">
+              <Label class="text-xs text-muted-foreground">触发条件 (when)：定时</Label>
+              <div class="flex flex-wrap gap-3">
+                <div class="space-y-1">
+                  <Label class="text-xs text-muted-foreground">cron 表达式</Label>
+                  <Input v-model="e.cron" class="w-48 font-mono" placeholder="0 */6 * * *" />
+                </div>
+                <div class="space-y-1">
+                  <Label class="text-xs text-muted-foreground">scope provider（可选）</Label>
+                  <Input v-model="e.scope_provider" class="w-48" placeholder="限定 provider" />
+                </div>
               </div>
             </div>
 
             <!-- if 条件 -->
             <div class="space-y-2">
-              <div class="flex items-center justify-between">
-                <Label class="text-xs text-muted-foreground">附加条件 (if)</Label>
-                <Button variant="ghost" size="xs" @click="addCond(e)"><Plus class="size-3" /> 加条件</Button>
-              </div>
+              <Label class="text-xs text-muted-foreground">附加条件 (if)</Label>
               <div v-for="(c, ci) in e.ifs" :key="ci" class="flex items-center gap-2">
                 <Select v-model="c.field">
                   <SelectTrigger class="w-44"><SelectValue /></SelectTrigger>
@@ -643,76 +688,99 @@ onBeforeRouteLeave(() => {
                   <Trash2 class="size-4" />
                 </Button>
               </div>
+              <button type="button" class="text-muted-foreground hover:text-foreground hover:border-foreground/30 flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-foreground/20 py-1.5 text-xs" @click="addCond(e)">
+                <Plus class="size-3" /> 加条件
+              </button>
             </div>
 
             <!-- do 动作 -->
             <div class="space-y-2">
-              <div class="flex items-center justify-between">
-                <Label class="text-xs text-muted-foreground">动作 (do)</Label>
-                <Button variant="ghost" size="xs" @click="addAction(e)"><Plus class="size-3" /> 加动作</Button>
-              </div>
-              <div v-for="(a, ai) in e.dos" :key="ai" class="rounded-lg border border-foreground/10 p-2 space-y-2">
-                <div class="flex items-center gap-2">
-                  <Select v-model="a.kind">
-                    <SelectTrigger class="w-56"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem v-for="k in ACTION_KINDS" :key="k.v" :value="k.v">{{ k.label }}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button variant="ghost" size="icon-sm" class="text-destructive ml-auto" @click="removeAction(e, ai)">
-                    <Trash2 class="size-4" />
-                  </Button>
-                </div>
+              <Label class="text-xs text-muted-foreground">动作 (do)</Label>
+              <div v-for="(a, ai) in e.dos" :key="ai" class="flex flex-wrap items-center gap-2">
+                <Select v-model="a.kind">
+                  <SelectTrigger class="w-48"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem v-for="k in ACTION_KINDS" :key="k.v" :value="k.v">{{ k.label }}</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Select v-if="a.kind === 'mark_key'" v-model="a.mark_status">
-                  <SelectTrigger class="w-56"><SelectValue /></SelectTrigger>
+                  <SelectTrigger class="w-44"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem v-for="s in MARK_STATUS" :key="s.v" :value="s.v">{{ s.label }}</SelectItem>
                   </SelectContent>
                 </Select>
-                <div v-else-if="a.kind === 'check_key' || a.kind === 'check_keys'" class="flex items-center gap-2">
+                <div v-else-if="a.kind === 'check_key' || a.kind === 'check_keys'" class="flex items-center gap-1.5">
                   <Switch v-model="a.chain" />
                   <Label class="text-xs text-muted-foreground">链式（chain）：探活后按结果再次匹配</Label>
                 </div>
-                <div v-else-if="a.kind === 'capture'" class="flex flex-wrap gap-1.5">
-                  <Badge v-for="f in CAPTURE_FIELDS" :key="f"
-                    :variant="a.fields.includes(f) ? 'default' : 'outline'"
-                    class="cursor-pointer" @click="toggleField(a, f)">{{ f }}</Badge>
-                  <span class="text-xs text-muted-foreground self-center">（不选=全抓）</span>
-                </div>
+                <DropdownMenu v-else-if="a.kind === 'capture'">
+                  <DropdownMenuTrigger as-child>
+                    <button type="button" class="border-input dark:bg-input/30 flex min-h-8 max-w-full flex-1 items-center gap-1 overflow-hidden rounded-lg border bg-transparent px-2.5 py-1 text-sm outline-none">
+                      <span class="flex flex-1 flex-wrap items-center gap-1">
+                        <Badge v-for="f in a.fields" :key="f" variant="secondary" class="h-5 shrink-0">{{ CAPTURE_LABELS[f] ?? f }}</Badge>
+                        <span v-if="!a.fields.length" class="text-muted-foreground">全抓（点击多选）</span>
+                      </span>
+                      <ChevronDown class="text-muted-foreground size-4 shrink-0" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuCheckboxItem
+                      v-for="f in CAPTURE_FIELDS" :key="f"
+                      :model-value="a.fields.includes(f)"
+                      @select="(ev: Event) => ev.preventDefault()"
+                      @update:model-value="() => toggleField(a, f)"
+                    >
+                      {{ CAPTURE_LABELS[f] ?? f }}
+                    </DropdownMenuCheckboxItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Button variant="ghost" size="icon-sm" class="text-destructive ml-auto shrink-0" @click="removeAction(e, ai)">
+                  <Trash2 class="size-4" />
+                </Button>
               </div>
+              <button type="button" class="text-muted-foreground hover:text-foreground hover:border-foreground/30 flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-foreground/20 py-1.5 text-xs" @click="addAction(e)">
+                <Plus class="size-3" /> 加动作
+              </button>
             </div>
 
             <!-- route 路由 -->
             <div class="space-y-2">
-              <div class="flex items-center gap-3">
-                <Label class="text-xs text-muted-foreground">路由 (route)</Label>
+              <Label class="text-xs text-muted-foreground">路由 (route)</Label>
+              <div class="flex items-start gap-2">
                 <Select v-model="e.routeMode">
                   <SelectTrigger class="w-32"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="single">单一</SelectItem>
-                    <SelectItem value="race">竞速 race</SelectItem>
+                    <SelectItem value="race">双发竞速</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-              <Select v-if="e.routeMode === 'single'" v-model="e.routeSingle">
-                <SelectTrigger class="w-56"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem v-for="r in ROUTES" :key="r.v" :value="r.v">{{ r.label }}</SelectItem>
-                </SelectContent>
-              </Select>
-              <div v-else class="space-y-2">
-                <div v-for="(r, rci) in e.routeRace" :key="rci" class="flex items-center gap-2">
-                  <Select v-model="e.routeRace[rci]">
-                    <SelectTrigger class="w-56"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem v-for="opt in RACE_ROUTES" :key="opt.v" :value="opt.v">{{ opt.label }}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button variant="ghost" size="icon-sm" class="text-destructive" @click="removeRace(e, rci)">
-                    <Trash2 class="size-4" />
-                  </Button>
-                </div>
-                <Button variant="outline" size="xs" @click="addRace(e)"><Plus class="size-3" /> 加并发分支</Button>
+                <Select v-if="e.routeMode === 'single'" v-model="e.routeSingle">
+                  <SelectTrigger class="w-56"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem v-for="r in ROUTES" :key="r.v" :value="r.v" :disabled="routeDisabled(e, r.v)">{{ r.label }}</SelectItem>
+                  </SelectContent>
+                </Select>
+                <DropdownMenu v-else>
+                  <DropdownMenuTrigger as-child>
+                    <button type="button" class="border-input dark:bg-input/30 flex min-h-8 max-w-full flex-1 items-center gap-1 overflow-hidden rounded-lg border bg-transparent px-2.5 py-1 text-sm outline-none">
+                      <span class="flex flex-1 flex-wrap items-center gap-1">
+                        <Badge v-for="r in e.routeRace" :key="r" variant="secondary" class="h-5 shrink-0">{{ lbl(RACE_ROUTES, r) }}</Badge>
+                        <span v-if="!e.routeRace.length" class="text-muted-foreground">选择并发分支（点击多选）</span>
+                      </span>
+                      <ChevronDown class="text-muted-foreground size-4 shrink-0" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuCheckboxItem
+                      v-for="opt in RACE_ROUTES" :key="opt.v"
+                      :model-value="e.routeRace.includes(opt.v)"
+                      @select="(ev: Event) => ev.preventDefault()"
+                      @update:model-value="() => toggleRace(e, opt.v)"
+                    >
+                      {{ opt.label }}
+                    </DropdownMenuCheckboxItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           </div>

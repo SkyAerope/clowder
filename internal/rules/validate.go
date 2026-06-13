@@ -121,6 +121,26 @@ func Validate(all []*Rule, ctx *ValidationContext) []ValidationWarning {
 				}
 			}
 		}
+
+		// 5. route=wait（继续等待上游）仅对含 TTFT 超时（上游未返回首字节）的上游触发器有意义；
+		// 其它情形（无 ttft_over_ms、非 upstream）上游已结束或无可等，该规则不会执行。
+		if r.Route.Single == RouteWait {
+			if r.When.Type() != "upstream" || r.When.TTFTOverMs == 0 {
+				add(r.Name, "route=wait（继续等待）仅适用于含 TTFT 超时（ttft_over_ms）的上游触发器，否则上游已结束、无可等，该规则不会执行")
+			}
+		}
+
+		// 6. when 阶段互斥：TTFT 超时（上游未返回）与 status_code/body/transport/error（已出结局）
+		// 不可能同时命中——一次 attempt 只有一种结局。
+		if r.When.Type() == "upstream" && r.When.TTFTOverMs > 0 &&
+			(r.When.StatusCode != "" || r.When.BodyContains != "" || r.When.BodyRegex != nil || r.When.Transport != "" || r.When.ErrorAny) {
+			add(r.Name, "when 同时含 TTFT 超时（上游未返回）与 status_code/body/transport/error（已出结局）条件，二者互斥，该规则永不命中")
+		}
+
+		// 7. route=passthrough（透传响应）需要上游已返回；when 含 TTFT 超时时无响应可透。
+		if r.Route.Single == RoutePassthrough && r.When.Type() == "upstream" && r.When.TTFTOverMs > 0 {
+			add(r.Name, "route=passthrough（透传响应）需要上游已返回，但 when 含 TTFT 超时（上游未返回），应改用 next_*/retry_same/wait")
+		}
 	}
 	return warns
 }

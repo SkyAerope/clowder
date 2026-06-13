@@ -34,14 +34,15 @@ const (
 	RouteNextProvider = "next_provider"
 	RouteRetrySame    = "retry_same"
 	RoutePassthrough  = "passthrough"
+	RouteWait         = "wait" // 继续等待上游首字节，不切换/不透传（仅对上游未返回场景有意义）
 )
 
 // Rule 是一条完整规则。
 type Rule struct {
 	Name        string
 	Description string
-	Priority    int  // 默认 100，越小越优先
-	Source      int  // SourceManifest / SourceUserFile / SourceBuiltin
+	Priority    int // 默认 100，越小越优先
+	Source      int // SourceManifest / SourceUserFile / SourceBuiltin
 	Builtin     bool
 	Enabled     bool // false = 规则停用，引擎跳过匹配
 
@@ -406,7 +407,7 @@ func parseRace(items []any) (RouteSpec, error) {
 	var race []string
 	for _, it := range items {
 		s := toString(it)
-		if !validRoute(s) || s == RoutePassthrough {
+		if !validRoute(s) || s == RoutePassthrough || s == RouteWait {
 			return RouteSpec{}, fmt.Errorf("invalid race route %q", s)
 		}
 		race = append(race, s)
@@ -488,7 +489,7 @@ func validTransport(s string) bool {
 
 func validRoute(s string) bool {
 	switch s {
-	case RouteNextKey, RouteNextProvider, RouteRetrySame, RoutePassthrough:
+	case RouteNextKey, RouteNextProvider, RouteRetrySame, RoutePassthrough, RouteWait:
 		return true
 	}
 	return false
