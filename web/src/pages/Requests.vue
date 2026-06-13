@@ -71,7 +71,7 @@ onMounted(load)
           <TableRow v-for="l in logs" :key="l.id">
             <TableCell class="text-xs whitespace-nowrap">{{ new Date(l.created_at + 'Z').toLocaleString() }}</TableCell>
             <TableCell>
-              <button class="font-mono text-xs text-primary hover:underline flex items-center gap-1"
+              <button class="font-mono text-xs text-primary hover:underline flex items-center gap-1 cursor-pointer"
                 @click="showTrace(l.trace_id)">
                 <GitBranch class="size-3" />{{ l.trace_id.slice(0, 8) }}
               </button>

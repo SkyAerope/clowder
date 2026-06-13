@@ -46,7 +46,7 @@ onMounted(load)
       <h1 class="text-xl font-semibold">抓取记录</h1>
       <div class="flex gap-2">
         <Input v-model="ruleFilter" class="w-44" placeholder="按规则过滤…" @keyup.enter="load" />
-        <Input v-model="fpFilter" class="w-44 font-mono" placeholder="按指纹过滤…" @keyup.enter="load" />
+        <Input v-model="fpFilter" class="w-44" placeholder="按指纹过滤…" @keyup.enter="load" />
         <Button variant="outline" size="icon" @click="load"><RefreshCw class="size-4" /></Button>
       </div>
     </div>

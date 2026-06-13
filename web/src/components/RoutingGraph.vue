@@ -114,7 +114,7 @@ function short(s: string, max = 26) {
 </script>
 
 <template>
-  <div ref="container" class="relative w-full overflow-x-auto">
+  <div ref="container" class="relative w-full overflow-x-auto overflow-y-hidden">
     <svg :width="width" :height="height" class="block min-w-[680px]">
       <!-- 连线：canonical → native（曲线），native → provider（曲线） -->
       <template v-for="(r, i) in rows" :key="r.id">

@@ -597,7 +597,7 @@ onBeforeRouteLeave(() => {
 
           <!-- 展开编辑面板 -->
           <div v-if="expanded.has(e._uid)" class="space-y-3 border-t border-foreground/10 p-3">
-            <Input v-model="e.name" placeholder="规则名（英文标识）" class="font-mono" />
+            <Input v-model="e.name" placeholder="规则名（英文标识）" />
             <Input v-model="e.description" placeholder="描述（显示为标题）" />
 
             <div class="flex flex-wrap items-end gap-3">
