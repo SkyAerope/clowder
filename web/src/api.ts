@@ -139,6 +139,14 @@ export interface RuleView {
   source: number
   builtin: boolean
   type: string
+  detail?: RuleDetail
+}
+
+export interface RuleDetail {
+  when: Record<string, unknown>
+  if: { field: string; op: string; value: number }[]
+  do: { kind: string; mark_status: string; chain: boolean; fields: string[] }[]
+  route: { mode: 'single' | 'race'; single: string; race: string[] }
 }
 
 export interface RulePreset {

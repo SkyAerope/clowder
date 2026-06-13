@@ -2,6 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { api, type KeyRow, type Provider } from '../api'
 import StatusBadge from '../components/StatusBadge.vue'
+import CopyButton from '../components/CopyButton.vue'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
@@ -95,7 +96,7 @@ onMounted(load)
       <AlertDescription>{{ msg }}</AlertDescription>
     </Alert>
 
-    <div class="rounded-none border bg-card overflow-x-auto">
+    <div class="ring-foreground/10 bg-card overflow-x-auto rounded-xl ring-1">
       <Table>
         <TableHeader>
           <TableRow>
@@ -109,8 +110,19 @@ onMounted(load)
           <TableRow v-for="k in filtered" :key="k.id">
             <TableCell class="text-muted-foreground">#{{ k.id }}</TableCell>
             <TableCell>{{ k.provider }}</TableCell>
-            <TableCell class="font-mono text-xs break-all max-w-64">{{ k.api_key }}</TableCell>
-            <TableCell class="font-mono text-xs">{{ k.email || '—' }}</TableCell>
+            <TableCell>
+              <div class="flex items-center gap-1">
+                <span class="font-mono text-xs truncate max-w-48" :title="k.api_key">{{ k.api_key }}</span>
+                <CopyButton :value="k.api_key" label="Key" />
+              </div>
+            </TableCell>
+            <TableCell>
+              <div v-if="k.email" class="flex items-center gap-1">
+                <span class="font-mono text-xs truncate max-w-48" :title="k.email">{{ k.email }}</span>
+                <CopyButton :value="k.email" label="Email" />
+              </div>
+              <span v-else class="text-muted-foreground">—</span>
+            </TableCell>
             <TableCell><StatusBadge :status="k.status" /></TableCell>
             <TableCell>{{ k.rate_limit_count }}</TableCell>
             <TableCell class="text-xs">{{ fmtTime(k.rate_limit_until) }}</TableCell>

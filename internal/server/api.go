@@ -513,9 +513,48 @@ func ruleViews(rs []*rules.Rule) []map[string]any {
 			"source":      r.Source,
 			"builtin":     r.Builtin,
 			"type":        r.When.Type(),
+			"detail":      ruleDetail(r),
 		})
 	}
 	return out
+}
+
+// ruleDetail 把规则结构展开成与前端 EditRule 对齐的可视化结构。
+func ruleDetail(r *rules.Rule) map[string]any {
+	w := &r.When
+	body := w.BodyContains
+	bodyRegex := false
+	if src := w.BodyRegexSrc(); src != "" {
+		body, bodyRegex = src, true
+	}
+	when := map[string]any{
+		"provider":       w.Provider,
+		"model":          w.Model,
+		"status_code":    w.StatusCode,
+		"body":           body,
+		"body_regex":     bodyRegex,
+		"transport":      w.Transport,
+		"ttft_over_ms":   w.TTFTOverMs,
+		"error":          w.ErrorAny,
+		"check_status":   w.CheckStatus,
+		"cron":           w.Cron,
+		"scope_provider": w.ScopeProvider,
+	}
+	ifs := make([]map[string]any, 0, len(r.If))
+	for _, c := range r.If {
+		ifs = append(ifs, map[string]any{"field": c.Field, "op": c.Op, "value": c.Value})
+	}
+	dos := make([]map[string]any, 0, len(r.Do))
+	for _, a := range r.Do {
+		dos = append(dos, map[string]any{
+			"kind": a.Kind, "mark_status": a.MarkStatus, "chain": a.Chain, "fields": a.Fields,
+		})
+	}
+	route := map[string]any{"mode": "single", "single": r.Route.Single, "race": r.Route.Race}
+	if r.Route.IsRace() {
+		route["mode"] = "race"
+	}
+	return map[string]any{"when": when, "if": ifs, "do": dos, "route": route}
 }
 
 func manifestView(ps *app.ProviderState) map[string]any {

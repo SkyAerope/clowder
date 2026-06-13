@@ -5,14 +5,14 @@ import (
 	"regexp"
 )
 
-// BuiltinRules 内置规则：不可删，无 capture。
+// BuiltinRules 内置规则：不可删、不可改，无 capture。
 // transport 基础设施故障 → provider 级 unhealthy + next_provider。
-// priority 5000：比通用 default-transport-retry(8000) 更优先，但仍可被用户规则(默认 100)覆盖。
+// priority 65535：传输故障与状态码规则互斥，不与其他规则竞争，固定为最后。
 func BuiltinRules() []*Rule {
 	mk := func(name, transport string) *Rule {
 		return &Rule{
 			Name:     name,
-			Priority: 5000,
+			Priority: 65535,
 			Source:   SourceBuiltin,
 			Builtin:  true,
 			When:     When{Transport: transport},
@@ -34,7 +34,7 @@ rules:
   - name: default-4xx-passthrough
     description: "4xx 客户端错误默认透传"
     priority: 8000
-    when: { status_code: 4xx }
+    when: { status_code: 400-499 }
     do:
       - capture: { fields: [response_headers, response_body, status_code] }
     route: passthrough
@@ -42,7 +42,7 @@ rules:
   - name: default-5xx-retry
     description: "5xx 服务端错误换 provider 重试"
     priority: 8000
-    when: { status_code: 5xx }
+    when: { status_code: 500-599 }
     do:
       - capture: { fields: [response_headers, response_body, status_code] }
     route: next_provider

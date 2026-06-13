@@ -62,8 +62,8 @@ onUnmounted(() => clearInterval(timer))
         v-for="p in providers"
         :key="p.name"
         :to="session.admin ? `/providers/${p.name}` : undefined"
-        class="rounded-none border bg-card text-card-foreground shadow-sm p-4 space-y-2"
-        :class="session.admin && 'hover:border-primary/50 transition-colors'"
+        class="ring-foreground/10 bg-card text-card-foreground flex flex-col gap-2 rounded-xl p-4 ring-1"
+        :class="session.admin && 'cursor-pointer transition-shadow hover:ring-primary/50'"
       >
         <div class="flex items-center justify-between">
           <span class="font-medium">{{ p.display_name || p.name }}</span>
@@ -84,7 +84,7 @@ onUnmounted(() => clearInterval(timer))
           </div>
         </div>
       </component>
-      <div v-if="!providers.length && !error" class="rounded-none border bg-card text-card-foreground shadow-sm p-6 text-sm text-muted-foreground col-span-full text-center">
+      <div v-if="!providers.length && !error" class="ring-foreground/10 bg-card text-card-foreground col-span-full rounded-xl p-6 text-center text-sm text-muted-foreground ring-1">
         暂无 provider，在 ~/.clowder/providers/ 下添加目录后 reload
       </div>
     </div>
@@ -95,8 +95,8 @@ onUnmounted(() => clearInterval(timer))
         <div
           v-for="(c, i) in auto"
           :key="c.provider + c.canonical"
-          class="flex items-center gap-2 rounded-none border px-3 py-2 text-sm"
-          :class="i === 0 && 'border-primary/60 bg-primary/5'"
+          class="ring-foreground/10 flex items-center gap-2 rounded-lg px-3 py-2 text-sm ring-1"
+          :class="i === 0 && 'bg-primary/5 ring-primary/60'"
         >
           <Zap class="size-4" :class="i === 0 ? 'text-primary' : 'text-muted-foreground'" />
           <span class="font-medium">{{ c.canonical }}</span>

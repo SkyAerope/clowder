@@ -55,17 +55,24 @@ rules:
 	}
 }
 
-func TestBuiltinTransportBeatsWildcard(t *testing.T) {
+func TestBuiltinTransportFallback(t *testing.T) {
+	// 默认规则存在时，通用 default-transport-retry(8000) 优先于内置(65535)，
+	// 所有传输错误（含 dns/conn/tls）都落到它。
 	e := engineWith(t, "")
-	// 内置 dns_failure（具体 transport，priority 5000）胜过 default-transport-retry（通用 transport:true，8000）
 	r := e.Match(&Event{Type: "upstream", Provider: "p", Transport: TransportDNSFailure, IsError: true})
-	if r == nil || r.Name != "builtin-dns-failure" {
-		t.Fatalf("want builtin-dns-failure, got %v", name(r))
+	if r == nil || r.Name != "default-transport-retry" {
+		t.Fatalf("want default-transport-retry, got %v", name(r))
 	}
-	// 非内置类别的传输错误落到 default-transport-retry
 	r = e.Match(&Event{Type: "upstream", Provider: "p", Transport: TransportStreamCut, IsError: true})
 	if r == nil || r.Name != "default-transport-retry" {
 		t.Fatalf("want default-transport-retry, got %v", name(r))
+	}
+
+	// 无默认规则时，内置规则作为兜底命中具体传输错误。
+	only := NewEngine(BuiltinRules())
+	r = only.Match(&Event{Type: "upstream", Provider: "p", Transport: TransportDNSFailure, IsError: true})
+	if r == nil || r.Name != "builtin-dns-failure" {
+		t.Fatalf("want builtin-dns-failure, got %v", name(r))
 	}
 }
 

@@ -4,19 +4,74 @@ import type { ModelEdge } from '../api'
 
 const props = defineProps<{ models: Record<string, ModelEdge[]> }>()
 
-const ROW_H = 44
+const ROW_H = 40
 const PAD = 24
 
+interface Row {
+  id: string
+  canonical: string
+  native: string
+  provider: string
+  best: boolean
+  healthy: boolean
+  ttft: string
+  // 该 canonical 分组的首行/尾行索引，用于左列分组框
+  groupStart: number
+  groupSpan: number
+}
+
 const canonicals = computed(() => Object.keys(props.models).sort())
-const providers = computed(() => {
-  const set = new Set<string>()
-  for (const edges of Object.values(props.models)) for (const e of edges) set.add(e.provider)
-  return [...set].sort()
+
+// 每条 canonical→provider 映射占一行：客户端名 → 实际模型 → 提供商。
+// provider 不去重，按 canonical 分组连续排列。
+const rows = computed<Row[]>(() => {
+  const out: Row[] = []
+  for (const c of canonicals.value) {
+    const edges = [...(props.models[c] ?? [])].sort((a, b) => {
+      if (a.best !== b.best) return a.best ? -1 : 1
+      return a.provider.localeCompare(b.provider)
+    })
+    const start = out.length
+    for (const e of edges) {
+      out.push({
+        id: `${c}|${e.provider}|${e.native}`,
+        canonical: c,
+        native: e.native,
+        provider: e.provider,
+        best: e.best,
+        healthy: e.healthy,
+        ttft: e.has_ttft ? `${e.ttft_ms}ms` : '',
+        groupStart: start,
+        groupSpan: edges.length,
+      })
+    }
+  }
+  return out
 })
 
-const height = computed(() => Math.max(canonicals.value.length, providers.value.length) * ROW_H + PAD * 2)
+// 左列分组：同一 canonical 合并为一个框，纵向居中跨其所有行。
+interface Group {
+  canonical: string
+  start: number
+  span: number
+}
+const groups = computed<Group[]>(() => {
+  const seen = new Map<string, Group>()
+  const out: Group[] = []
+  rows.value.forEach((r) => {
+    let g = seen.get(r.canonical)
+    if (!g) {
+      g = { canonical: r.canonical, start: r.groupStart, span: r.groupSpan }
+      seen.set(r.canonical, g)
+      out.push(g)
+    }
+  })
+  return out
+})
 
-const width = ref(720)
+const height = computed(() => rows.value.length * ROW_H + PAD * 2)
+
+const width = ref(960)
 const container = ref<HTMLElement>()
 let ro: ResizeObserver | undefined
 onMounted(() => {
@@ -30,87 +85,136 @@ onMounted(() => {
 })
 onUnmounted(() => ro?.disconnect())
 
-const leftX = 190
-const rightX = computed(() => width.value - 190)
+const sideW = 180
+const midBoxW = 200
+const leftDotX = sideW
+const midX = computed(() => width.value / 2)
+const midLeftX = computed(() => midX.value - midBoxW / 2)
+const midRightX = computed(() => midX.value + midBoxW / 2)
+const rightDotX = computed(() => width.value - sideW)
 
-function yOf(idx: number) {
-  return PAD + idx * ROW_H + ROW_H / 2
+const rowY = (i: number) => PAD + i * ROW_H + ROW_H / 2
+const groupY = (g: Group) => PAD + g.start * ROW_H + (g.span * ROW_H) / 2
+
+function curve(x1: number, y1: number, x2: number, y2: number) {
+  const mx = (x1 + x2) / 2
+  return `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`
 }
-
-interface Edge {
-  key: string
-  path: string
-  best: boolean
-  healthy: boolean
-  ttft: string
-}
-
-const edges = computed<Edge[]>(() => {
-  const out: Edge[] = []
-  canonicals.value.forEach((c, ci) => {
-    for (const e of props.models[c] ?? []) {
-      const pi = providers.value.indexOf(e.provider)
-      if (pi < 0) continue
-      const y1 = yOf(ci)
-      const y2 = yOf(pi)
-      const x1 = leftX
-      const x2 = rightX.value
-      const mx = (x1 + x2) / 2
-      out.push({
-        key: `${c}->${e.provider}`,
-        path: `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`,
-        best: e.best,
-        healthy: e.healthy,
-        ttft: e.has_ttft ? `${e.ttft_ms}ms` : '',
-      })
-    }
-  })
-  return out
-})
 
 const hovered = ref('')
+
+function strokeOf(healthy: boolean, best: boolean) {
+  if (!healthy) return 'var(--color-destructive)'
+  return best ? 'var(--color-primary)' : 'var(--color-border)'
+}
+
+function short(s: string, max = 26) {
+  return s.length > max ? `${s.slice(0, max - 1)}…` : s
+}
 </script>
 
 <template>
   <div ref="container" class="relative w-full overflow-x-auto">
-    <svg :width="width" :height="height" class="block min-w-[560px]">
-      <!-- 曲线 -->
-      <path
-        v-for="e in edges"
-        :key="e.key"
-        :d="e.path"
-        fill="none"
-        :stroke="!e.healthy ? 'var(--color-destructive)' : e.best ? 'var(--color-primary)' : 'var(--color-border)'"
-        :stroke-width="e.best ? 2.5 : 1.5"
-        :stroke-dasharray="e.healthy ? undefined : '4 4'"
-        :opacity="hovered && hovered !== e.key ? 0.25 : 1"
-        class="transition-opacity"
-        @mouseenter="hovered = e.key"
-        @mouseleave="hovered = ''"
-      />
-      <!-- 左列：canonical 模型 -->
-      <g v-for="(c, i) in canonicals" :key="c">
-        <rect :x="8" :y="yOf(i) - 14" :width="leftX - 16" height="28" rx="8"
-          class="fill-[var(--color-muted)]" />
-        <text :x="leftX - 16" :y="yOf(i) + 4" text-anchor="end" class="text-xs font-medium fill-[var(--color-foreground)]">
-          {{ c }}
+    <svg :width="width" :height="height" class="block min-w-[680px]">
+      <!-- 连线：canonical → native（曲线），native → provider（曲线） -->
+      <template v-for="(r, i) in rows" :key="r.id">
+        <path
+          :d="curve(leftDotX, groupY(groups.find((g) => g.canonical === r.canonical)!), midLeftX, rowY(i))"
+          fill="none"
+          :stroke="strokeOf(r.healthy, r.best)"
+          :stroke-width="r.best ? 2.5 : 1.5"
+          :stroke-dasharray="r.healthy ? undefined : '4 4'"
+          :opacity="hovered && hovered !== r.id ? 0.18 : 1"
+          class="transition-opacity"
+        />
+        <path
+          :d="curve(midRightX, rowY(i), rightDotX, rowY(i))"
+          fill="none"
+          :stroke="strokeOf(r.healthy, r.best)"
+          :stroke-width="r.best ? 2.5 : 1.5"
+          :stroke-dasharray="r.healthy ? undefined : '4 4'"
+          :opacity="hovered && hovered !== r.id ? 0.18 : 1"
+          class="transition-opacity"
+        />
+      </template>
+
+      <!-- 左列：面向客户端的名称（同名合并、纵向跨行） -->
+      <g v-for="g in groups" :key="'g-' + g.canonical">
+        <rect
+          :x="8"
+          :y="groupY(g) - 14"
+          :width="sideW - 16"
+          height="28"
+          rx="8"
+          class="fill-[var(--color-muted)]"
+        />
+        <text
+          :x="sideW - 16"
+          :y="groupY(g) + 4"
+          text-anchor="end"
+          class="text-xs font-medium fill-[var(--color-foreground)]"
+        >
+          {{ short(g.canonical, 22) }}
+          <title>{{ g.canonical }}</title>
         </text>
-        <circle :cx="leftX" :cy="yOf(i)" r="3.5" class="fill-[var(--color-primary)]" />
+        <circle :cx="leftDotX" :cy="groupY(g)" r="3.5" class="fill-[var(--color-primary)]" />
       </g>
-      <!-- 右列：provider -->
-      <g v-for="(p, i) in providers" :key="p">
-        <rect :x="rightX + 8" :y="yOf(i) - 14" :width="leftX - 16" height="28" rx="8"
-          class="fill-[var(--color-muted)]" />
-        <text :x="rightX + 16" :y="yOf(i) + 4" class="text-xs font-medium fill-[var(--color-foreground)]">
-          {{ p }}
+
+      <!-- 中列：模型实际名称（每行一个） -->
+      <g
+        v-for="(r, i) in rows"
+        :key="'m-' + r.id"
+        class="cursor-default"
+        @mouseenter="hovered = r.id"
+        @mouseleave="hovered = ''"
+      >
+        <rect
+          :x="midLeftX"
+          :y="rowY(i) - 14"
+          :width="midBoxW"
+          height="28"
+          rx="8"
+          fill="var(--color-card)"
+          :stroke="strokeOf(r.healthy, r.best)"
+          :stroke-width="r.best ? 1.5 : 1"
+        />
+        <text
+          :x="midX"
+          :y="rowY(i) + 4"
+          text-anchor="middle"
+          class="text-xs font-medium fill-[var(--color-foreground)]"
+        >
+          {{ short(r.native) }}
+          <title>{{ r.native }}</title>
         </text>
-        <circle :cx="rightX" :cy="yOf(i)" r="3.5" class="fill-[var(--color-primary)]" />
+      </g>
+
+      <!-- 右列：提供商（每行一个，不去重） -->
+      <g v-for="(r, i) in rows" :key="'p-' + r.id">
+        <rect
+          :x="rightDotX + 8"
+          :y="rowY(i) - 14"
+          :width="sideW - 16"
+          height="28"
+          rx="8"
+          class="fill-[var(--color-muted)]"
+        />
+        <text
+          :x="rightDotX + 16"
+          :y="rowY(i) + 4"
+          class="text-xs font-medium fill-[var(--color-foreground)]"
+        >
+          {{ short(r.provider, 16) }}<tspan v-if="r.ttft" class="fill-[var(--color-muted-foreground)]"> · {{ r.ttft }}</tspan>
+          <title>{{ r.provider }}{{ r.ttft ? ' · ' + r.ttft : '' }}</title>
+        </text>
+        <circle :cx="rightDotX" :cy="rowY(i)" r="3.5" class="fill-[var(--color-primary)]" />
       </g>
     </svg>
-    <div class="flex gap-4 text-xs text-muted-foreground mt-1">
+    <div class="flex flex-wrap items-center gap-4 text-xs text-muted-foreground mt-2">
       <span class="flex items-center gap-1.5"><span class="inline-block w-5 h-0.5 bg-primary rounded" /> 最优路由</span>
       <span class="flex items-center gap-1.5"><span class="inline-block w-5 h-0.5 bg-border rounded" /> 备选</span>
       <span class="flex items-center gap-1.5"><span class="inline-block w-5 border-t-2 border-dashed border-destructive" /> 不健康</span>
+      <span class="ml-auto">客户端名称 → 实际模型 → 提供商</span>
     </div>
   </div>
 </template>

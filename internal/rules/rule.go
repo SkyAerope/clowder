@@ -55,7 +55,7 @@ type When struct {
 	// --- 上游结果触发字段 ---
 	Provider     string
 	Model        string
-	StatusCode   string // "403" 精确、"4xx"/"5xx" 通配、"" 未设
+	StatusCode   string // "403" 精确、"400-499" 区间、"" 未设
 	BodyContains string
 	BodyRegex    *regexp.Regexp
 	bodyRegexSrc string
@@ -81,6 +81,9 @@ func (w *When) Type() string {
 	}
 	return "upstream"
 }
+
+// BodyRegexSrc 返回 body_regex 的原始正则文本（供 UI 回显）。
+func (w *When) BodyRegexSrc() string { return w.bodyRegexSrc }
 
 // Condition 是 if 里的一个数值比较。
 type Condition struct {
@@ -443,7 +446,12 @@ func (r *Rule) CanMatchSuccess() bool {
 		if w.StatusCode == "4xx" || w.StatusCode == "5xx" {
 			return false
 		}
-		if n, err := strconv.Atoi(w.StatusCode); err == nil && (n < 200 || n >= 300) {
+		if lo, hi, ok := parseStatusRange(w.StatusCode); ok {
+			// 区间完全落在 2xx 之外 → 不会命中成功响应
+			if lo > 299 || hi < 200 {
+				return false
+			}
+		} else if n, err := strconv.Atoi(w.StatusCode); err == nil && (n < 200 || n >= 300) {
 			return false
 		}
 	}
@@ -458,6 +466,9 @@ func (r *Rule) NeedsBody() bool {
 func validStatusPattern(s string) bool {
 	if s == "4xx" || s == "5xx" || s == "2xx" || s == "3xx" || s == "1xx" {
 		return true
+	}
+	if lo, hi, ok := parseStatusRange(s); ok {
+		return lo >= 100 && hi <= 599
 	}
 	n, err := strconv.Atoi(s)
 	return err == nil && n >= 100 && n <= 599

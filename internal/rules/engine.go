@@ -151,8 +151,25 @@ func matchStatus(pattern string, code int) bool {
 	case "1xx", "2xx", "3xx", "4xx", "5xx":
 		return strconv.Itoa(code/100)+"xx" == pattern
 	}
+	if lo, hi, ok := parseStatusRange(pattern); ok {
+		return code >= lo && code <= hi
+	}
 	n, err := strconv.Atoi(pattern)
 	return err == nil && n == code
+}
+
+// parseStatusRange 解析 "400-499" 区间，返回 [lo, hi]。
+func parseStatusRange(pattern string) (lo, hi int, ok bool) {
+	i := strings.IndexByte(pattern, '-')
+	if i <= 0 || i >= len(pattern)-1 {
+		return 0, 0, false
+	}
+	a, err1 := strconv.Atoi(pattern[:i])
+	b, err2 := strconv.Atoi(pattern[i+1:])
+	if err1 != nil || err2 != nil || a > b {
+		return 0, 0, false
+	}
+	return a, b, true
 }
 
 func containsBody(body, substr string) bool {

@@ -51,7 +51,7 @@ onMounted(load)
       </div>
     </div>
 
-    <div class="rounded-none border bg-card overflow-x-auto">
+    <div class="ring-foreground/10 bg-card overflow-x-auto rounded-xl ring-1">
       <Table>
         <TableHeader>
           <TableRow>

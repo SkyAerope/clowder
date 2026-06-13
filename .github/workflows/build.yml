@@ -78,7 +78,7 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
         run: |
-          out="clowder-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}"
+          out="clowder-${{ matrix.goos }}-${{ matrix.goarch }}"
           go build -trimpath -ldflags="-s -w" -o "dist/${out}" ./cmd/clowder
           ls -lh dist/
 
