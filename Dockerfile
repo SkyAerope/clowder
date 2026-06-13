@@ -5,8 +5,8 @@
 #   docker run -d --name clowder -p 12100:12100 \
 #     -v clowder-data:/home/clowder/.clowder clowder
 #
-# 配置 / sqlite 数据 / providers 都落在 ~/.clowder，用具名卷持久化即可。
-# 各平台独立二进制由 GitHub Actions 构建发布，不在本文件职责内。
+# 配置 / sqlite 数据 / providers 都在 ~/.clowder，用容器卷持久化即可。
+
 
 # ---- 阶段 1：构建前端 (web/dist) ----
 FROM node:22-alpine AS web
