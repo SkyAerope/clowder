@@ -3,18 +3,21 @@ package rules
 import (
 	"os"
 	"regexp"
+
+	"gopkg.in/yaml.v3"
 )
 
-// BuiltinRules 内置规则：不可删、不可改，无 capture。
+// BuiltinRules 内置规则：不可删、不可改，无 capture，但可在规则页开关禁用（记入 disabled_builtins）。
 // transport 基础设施故障 → provider 级 unhealthy + next_provider。
-// priority 65535：传输故障与状态码规则互斥，不与其他规则竞争，固定为最后。
+// priority 1：优先于一切用户/默认规则，确保 dns/conn/tls 基础故障第一时间标记 provider 不健康。
 func BuiltinRules() []*Rule {
 	mk := func(name, transport string) *Rule {
 		return &Rule{
 			Name:     name,
-			Priority: 65535,
+			Priority: 1,
 			Source:   SourceBuiltin,
 			Builtin:  true,
+			Enabled:  true,
 			When:     When{Transport: transport},
 			Do:       []Action{{Kind: "mark_provider_unhealthy"}},
 			Route:    RouteSpec{Single: RouteNextProvider},
@@ -109,6 +112,38 @@ const PresetRulesYAML = `rules:
       - mark_model_unhealthy: {}
       - refresh_models: {}
     route: next_provider
+
+  - name: default-4xx-passthrough
+    description: "4xx 客户端错误默认透传"
+    priority: 8000
+    when: { status_code: 400-499 }
+    do:
+      - capture: { fields: [response_headers, response_body, status_code] }
+    route: passthrough
+
+  - name: default-5xx-retry
+    description: "5xx 服务端错误换 provider 重试"
+    priority: 8000
+    when: { status_code: 500-599 }
+    do:
+      - capture: { fields: [response_headers, response_body, status_code] }
+    route: next_provider
+
+  - name: default-ttft-timeout
+    description: "TTFT 超 7s 切换 provider"
+    priority: 8000
+    when: { ttft_over_ms: 7000 }
+    do:
+      - capture: { fields: [response_headers, response_body, status_code] }
+    route: next_provider
+
+  - name: default-catch-all
+    description: "兜底：任意未分类错误透传并留样本"
+    priority: 10000
+    when: { error: true }
+    do:
+      - capture: { fields: [response_headers, response_body, status_code] }
+    route: passthrough
 `
 
 // EnsureUserRulesFile rules.yaml 不存在时写入默认规则。
@@ -129,6 +164,24 @@ func LoadUserRules(path string) ([]*Rule, error) {
 		return nil, err
 	}
 	return ParseRules(data, SourceUserFile)
+}
+
+// ParseDisabledBuiltins 从 rules.yaml 读取被禁用的内置规则名集合（顶层 disabled_builtins）。
+func ParseDisabledBuiltins(data []byte) map[string]bool {
+	var doc struct {
+		DisabledBuiltins []string `yaml:"disabled_builtins"`
+	}
+	if yaml.Unmarshal(data, &doc) != nil {
+		return nil
+	}
+	if len(doc.DisabledBuiltins) == 0 {
+		return nil
+	}
+	set := make(map[string]bool, len(doc.DisabledBuiltins))
+	for _, n := range doc.DisabledBuiltins {
+		set[n] = true
+	}
+	return set
 }
 
 // PresetRules 解析预设规则列表。

@@ -55,24 +55,34 @@ rules:
 	}
 }
 
-func TestBuiltinTransportFallback(t *testing.T) {
-	// 默认规则存在时，通用 default-transport-retry(8000) 优先于内置(65535)，
-	// 所有传输错误（含 dns/conn/tls）都落到它。
+func TestBuiltinTransportPriority(t *testing.T) {
+	// 内置传输故障规则 priority 1，优先于通用 default-transport-retry(8000)：
+	// dns/conn/tls 命中内置（标记 provider 不健康），其余传输错误落 default-transport-retry。
 	e := engineWith(t, "")
 	r := e.Match(&Event{Type: "upstream", Provider: "p", Transport: TransportDNSFailure, IsError: true})
-	if r == nil || r.Name != "default-transport-retry" {
-		t.Fatalf("want default-transport-retry, got %v", name(r))
+	if r == nil || r.Name != "builtin-dns-failure" {
+		t.Fatalf("want builtin-dns-failure, got %v", name(r))
 	}
 	r = e.Match(&Event{Type: "upstream", Provider: "p", Transport: TransportStreamCut, IsError: true})
 	if r == nil || r.Name != "default-transport-retry" {
 		t.Fatalf("want default-transport-retry, got %v", name(r))
 	}
 
-	// 无默认规则时，内置规则作为兜底命中具体传输错误。
-	only := NewEngine(BuiltinRules())
-	r = only.Match(&Event{Type: "upstream", Provider: "p", Transport: TransportDNSFailure, IsError: true})
-	if r == nil || r.Name != "builtin-dns-failure" {
-		t.Fatalf("want builtin-dns-failure, got %v", name(r))
+	// 内置规则可被禁用：禁用后 dns 落到通用 default-transport-retry。
+	bs := BuiltinRules()
+	for _, b := range bs {
+		if b.Name == "builtin-dns-failure" {
+			b.Enabled = false
+		}
+	}
+	def, err := ParseRules([]byte(DefaultRulesYAML), SourceUserFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e2 := NewEngine(append(bs, def...))
+	r = e2.Match(&Event{Type: "upstream", Provider: "p", Transport: TransportDNSFailure, IsError: true})
+	if r == nil || r.Name != "default-transport-retry" {
+		t.Fatalf("disabled builtin should fall through, got %v", name(r))
 	}
 }
 

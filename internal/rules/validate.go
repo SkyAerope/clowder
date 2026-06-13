@@ -46,6 +46,14 @@ type ValidationContext struct {
 
 // Validate 对规则全集做持续校验（保存时 + 规则页展示）。
 func Validate(all []*Rule, ctx *ValidationContext) []ValidationWarning {
+	// 停用规则不参与校验（用户已主动关闭）。
+	enabled := make([]*Rule, 0, len(all))
+	for _, r := range all {
+		if r.Enabled {
+			enabled = append(enabled, r)
+		}
+	}
+	all = enabled
 	var warns []ValidationWarning
 	add := func(rule, format string, args ...any) {
 		warns = append(warns, ValidationWarning{Rule: rule, Message: fmt.Sprintf(format, args...)})

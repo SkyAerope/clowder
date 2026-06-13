@@ -40,9 +40,10 @@ const (
 type Rule struct {
 	Name        string
 	Description string
-	Priority    int // 默认 100，越小越优先
-	Source      int // SourceManifest / SourceUserFile / SourceBuiltin
+	Priority    int  // 默认 100，越小越优先
+	Source      int  // SourceManifest / SourceUserFile / SourceBuiltin
 	Builtin     bool
+	Enabled     bool // false = 规则停用，引擎跳过匹配
 
 	When  When
 	If    []Condition
@@ -117,6 +118,7 @@ type rawRule struct {
 	Name        string           `yaml:"name"`
 	Description string           `yaml:"description"`
 	Priority    *int             `yaml:"priority"`
+	Enabled     *bool            `yaml:"enabled"`
 	When        map[string]any   `yaml:"when"`
 	If          map[string]any   `yaml:"if"`
 	Do          []map[string]any `yaml:"do"`
@@ -179,6 +181,7 @@ func buildRule(rr rawRule, source int) (*Rule, error) {
 		Description: rr.Description,
 		Priority:    100,
 		Source:      source,
+		Enabled:     rr.Enabled == nil || *rr.Enabled,
 	}
 	if rr.Priority != nil {
 		r.Priority = *rr.Priority

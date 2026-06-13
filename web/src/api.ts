@@ -138,6 +138,7 @@ export interface RuleView {
   priority: number
   source: number
   builtin: boolean
+  enabled: boolean
   type: string
   detail?: RuleDetail
 }

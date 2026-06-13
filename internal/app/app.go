@@ -163,11 +163,23 @@ func (a *App) Reload() error {
 	if err := rules.EnsureUserRulesFile(rulesPath); err != nil {
 		return err
 	}
-	userRules, err := rules.LoadUserRules(rulesPath)
+	rulesRaw, err := os.ReadFile(rulesPath)
 	if err != nil {
 		return fmt.Errorf("rules.yaml: %w", err)
 	}
-	all := append(append(manifestRules, userRules...), rules.BuiltinRules()...)
+	userRules, err := rules.ParseRules(rulesRaw, rules.SourceUserFile)
+	if err != nil {
+		return fmt.Errorf("rules.yaml: %w", err)
+	}
+	builtins := rules.BuiltinRules()
+	if disabled := rules.ParseDisabledBuiltins(rulesRaw); disabled != nil {
+		for _, b := range builtins {
+			if disabled[b.Name] {
+				b.Enabled = false
+			}
+		}
+	}
+	all := append(append(manifestRules, userRules...), builtins...)
 	engine := rules.NewEngine(all)
 
 	// 4. 重建 canonical 映射 & scheduler

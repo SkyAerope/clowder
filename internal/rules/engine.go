@@ -43,6 +43,9 @@ type Engine struct {
 func NewEngine(all []*Rule) *Engine {
 	e := &Engine{rules: all}
 	for _, r := range all {
+		if !r.Enabled {
+			continue
+		}
 		if r.CanMatchSuccess() && r.NeedsBody() {
 			e.successBodyRules = true
 		}
@@ -87,6 +90,9 @@ func ruleLess(a, b *Rule) bool {
 }
 
 func (e *Engine) matches(r *Rule, ev *Event) bool {
+	if !r.Enabled {
+		return false
+	}
 	if r.When.Type() != ev.Type {
 		return false
 	}

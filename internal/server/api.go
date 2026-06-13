@@ -512,6 +512,7 @@ func ruleViews(rs []*rules.Rule) []map[string]any {
 			"priority":    r.Priority,
 			"source":      r.Source,
 			"builtin":     r.Builtin,
+			"enabled":     r.Enabled,
 			"type":        r.When.Type(),
 			"detail":      ruleDetail(r),
 		})

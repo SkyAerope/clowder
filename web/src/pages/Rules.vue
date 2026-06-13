@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { onBeforeRouteLeave } from 'vue-router'
 import * as YAML from 'yaml'
 import { api, type RuleView, type RulePreset } from '../api'
 import Card from '../components/Card.vue'
@@ -29,6 +30,7 @@ interface EditRule {
   name: string
   description: string
   priority: number
+  enabled: boolean
   whenType: WhenType
   whenClauses: WhenClause[]
   check_status: string
@@ -118,13 +120,16 @@ const expanded = ref<Set<number>>(new Set())
 const presetOpen = ref(false)
 const presetExpanded = ref<Set<number>>(new Set())
 const addedPresets = ref<Set<string>>(new Set())
+const disabledBuiltins = ref<Set<string>>(new Set())
+const savedYaml = ref('')
+const dirty = computed(() => yamlText.value !== savedYaml.value)
 
 let uidSeq = 1
 
 function blankRule(): EditRule {
   return {
     _uid: uidSeq++,
-    name: '', description: '', priority: 100, whenType: 'upstream',
+    name: '', description: '', priority: 100, enabled: true, whenType: 'upstream',
     whenClauses: [], check_status: 'invalid', cron: '', scope_provider: '',
     ifs: [], dos: [], routeMode: 'single', routeSingle: 'passthrough', routeRace: [],
   }
@@ -147,6 +152,7 @@ function rawToEdit(rr: any): EditRule {
   e.name = rr.name ?? ''
   e.description = rr.description ?? ''
   e.priority = typeof rr.priority === 'number' ? rr.priority : 100
+  e.enabled = rr.enabled !== false
   const w = rr.when ?? {}
   if (w.schedule) {
     e.whenType = 'schedule'
@@ -196,6 +202,7 @@ function detailToEdit(v: RuleView): EditRule {
   e.name = v.name
   e.description = v.description
   e.priority = v.priority
+  e.enabled = v.enabled
   e.whenType = (v.type as WhenType) || 'upstream'
   const w: any = v.detail?.when ?? {}
   if (e.whenType === 'schedule') {
@@ -222,11 +229,12 @@ function detailToEdit(v: RuleView): EditRule {
 
 // ---------- 可视化 -> YAML ----------
 function draftToObj(list: EditRule[]): any {
-  return {
+  const obj: any = {
     rules: list.map((e) => {
       const r: any = { name: e.name }
       if (e.description) r.description = e.description
       if (e.priority !== 100) r.priority = e.priority
+      if (!e.enabled) r.enabled = false
       const w: any = {}
       if (e.whenType === 'schedule') {
         w.schedule = { cron: e.cron }
@@ -273,12 +281,8 @@ function draftToObj(list: EditRule[]): any {
       return r
     }),
   }
-}
-
-function parseToDraft(text: string): EditRule[] {
-  const doc = YAML.parse(text) || {}
-  const raws: any[] = Array.isArray(doc.rules) ? doc.rules : []
-  return raws.map(rawToEdit)
+  if (disabledBuiltins.value.size) obj.disabled_builtins = [...disabledBuiltins.value]
+  return obj
 }
 
 function serializeDraft() {
@@ -287,7 +291,11 @@ function serializeDraft() {
 
 function refreshDraft() {
   try {
-    draft.value = parseToDraft(yamlText.value)
+    const doc = YAML.parse(yamlText.value) || {}
+    const raws: any[] = Array.isArray(doc.rules) ? doc.rules : []
+    draft.value = raws.map(rawToEdit)
+    const db: any[] = Array.isArray(doc.disabled_builtins) ? doc.disabled_builtins : []
+    disabledBuiltins.value = new Set(db.map(String))
     parseError.value = ''
   } catch (e: any) {
     parseError.value = `YAML 解析失败，请在「源文件」修正后再切换：${e.message}`
@@ -372,6 +380,12 @@ function presetAdded(p: RulePreset): boolean {
   return p.exists || addedPresets.value.has(String(p.rule.name))
 }
 
+function toggleBuiltin(name: string, enabled: boolean) {
+  if (enabled) disabledBuiltins.value.delete(name)
+  else disabledBuiltins.value.add(name)
+  serializeDraft()
+}
+
 // ---------- 编辑操作 ----------
 function addRule() {
   const e = blankRule()
@@ -406,6 +420,9 @@ async function load() {
   presets.value = (await api.get<RulePreset[]>('/api/admin/rules/presets')) ?? []
   addedPresets.value = new Set()
   refreshDraft()
+  serializeDraft()
+  await nextTick()
+  savedYaml.value = yamlText.value
 }
 
 async function save() {
@@ -434,7 +451,22 @@ function addPreset(p: RulePreset) {
   msg.value = `已插入 ${p.rule.name}，请检查后保存`
 }
 
-onMounted(load)
+function onBeforeUnload(e: BeforeUnloadEvent) {
+  if (dirty.value) {
+    e.preventDefault()
+    e.returnValue = ''
+  }
+}
+
+onMounted(() => {
+  load()
+  window.addEventListener('beforeunload', onBeforeUnload)
+})
+onUnmounted(() => window.removeEventListener('beforeunload', onBeforeUnload))
+onBeforeRouteLeave(() => {
+  if (dirty.value) return window.confirm('有未保存的规则修改，确定离开吗？')
+  return true
+})
 </script>
 
 <template>
@@ -445,7 +477,7 @@ onMounted(load)
         <Button variant="outline" @click="presetOpen = true">
           <Plus class="size-4" /> 添加预设规则
         </Button>
-        <Button :disabled="saving" @click="save">
+        <Button :disabled="saving || !dirty" @click="save">
           <Save class="size-4" /> 保存并生效
         </Button>
       </div>
@@ -480,21 +512,24 @@ onMounted(load)
         </Alert>
 
         <!-- 可编辑规则卡片 -->
-        <div v-for="(e, ri) in draft" :key="e._uid" class="ring-foreground/10 bg-card rounded-xl ring-1">
-          <button type="button" class="flex w-full items-start gap-2 p-3 text-left" @click="toggleOpen(e._uid)">
-            <component :is="expanded.has(e._uid) ? ChevronDown : ChevronRight" class="text-muted-foreground mt-0.5 size-4 shrink-0" />
-            <div class="min-w-0 flex-1 space-y-1">
-              <div class="flex items-center gap-2">
-                <span class="truncate font-medium">{{ e.description || '未命名规则' }}</span>
-                <span class="text-muted-foreground ml-auto shrink-0 truncate font-mono text-xs">{{ e.name }}</span>
+        <div v-for="(e, ri) in draft" :key="e._uid" class="border-border bg-card overflow-hidden rounded-xl border" :class="{ 'opacity-60': !e.enabled }">
+          <div class="flex items-start gap-2 p-3">
+            <button type="button" class="flex min-w-0 flex-1 items-start gap-2 text-left" @click="toggleOpen(e._uid)">
+              <component :is="expanded.has(e._uid) ? ChevronDown : ChevronRight" class="text-muted-foreground mt-0.5 size-4 shrink-0" />
+              <div class="min-w-0 flex-1 space-y-1">
+                <div class="flex items-center gap-2">
+                  <span class="truncate font-medium">{{ e.description || '未命名规则' }}</span>
+                  <span class="text-muted-foreground ml-auto shrink-0 truncate font-mono text-xs">{{ e.name }}</span>
+                </div>
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <Badge variant="secondary" class="shrink-0">P{{ e.priority }}</Badge>
+                  <Badge variant="outline" class="shrink-0">{{ TYPE_LABELS[e.whenType] }}</Badge>
+                  <span class="text-muted-foreground text-xs">{{ summarize(e) }}</span>
+                </div>
               </div>
-              <div class="flex flex-wrap items-center gap-1.5">
-                <Badge variant="secondary" class="shrink-0">P{{ e.priority }}</Badge>
-                <Badge variant="outline" class="shrink-0">{{ TYPE_LABELS[e.whenType] }}</Badge>
-                <span class="text-muted-foreground text-xs">{{ summarize(e) }}</span>
-              </div>
-            </div>
-          </button>
+            </button>
+            <Switch v-model="e.enabled" class="mt-1 shrink-0" title="启用 / 停用此规则" />
+          </div>
 
           <!-- 展开编辑面板 -->
           <div v-if="expanded.has(e._uid)" class="space-y-3 border-t border-foreground/10 p-3">
@@ -690,21 +725,24 @@ onMounted(load)
         <!-- 内置规则（只读） -->
         <div v-if="builtinEdits.length" class="space-y-2 pt-2">
           <h2 class="text-sm font-medium text-muted-foreground">内置规则（只读）</h2>
-          <div v-for="be in builtinEdits" :key="be._uid" class="ring-foreground/10 bg-muted/30 rounded-xl ring-1">
-            <button type="button" class="flex w-full items-start gap-2 p-3 text-left" @click="toggleOpen(be._uid)">
-              <component :is="expanded.has(be._uid) ? ChevronDown : ChevronRight" class="text-muted-foreground mt-0.5 size-4 shrink-0" />
-              <div class="min-w-0 flex-1 space-y-1">
-                <div class="flex items-center gap-2">
-                  <span class="truncate font-medium">{{ be.description || '内置规则' }}</span>
-                  <span class="text-muted-foreground ml-auto shrink-0 truncate font-mono text-xs">{{ be.name }}</span>
+          <div v-for="be in builtinEdits" :key="be._uid" class="border-border bg-muted/30 overflow-hidden rounded-xl border" :class="{ 'opacity-60': disabledBuiltins.has(be.name) }">
+            <div class="flex items-start gap-2 p-3">
+              <button type="button" class="flex min-w-0 flex-1 items-start gap-2 text-left" @click="toggleOpen(be._uid)">
+                <component :is="expanded.has(be._uid) ? ChevronDown : ChevronRight" class="text-muted-foreground mt-0.5 size-4 shrink-0" />
+                <div class="min-w-0 flex-1 space-y-1">
+                  <div class="flex items-center gap-2">
+                    <span class="truncate font-medium">{{ be.description || '内置规则' }}</span>
+                    <span class="text-muted-foreground ml-auto shrink-0 truncate font-mono text-xs">{{ be.name }}</span>
+                  </div>
+                  <div class="flex flex-wrap items-center gap-1.5">
+                    <Badge variant="secondary" class="shrink-0">P{{ be.priority }}</Badge>
+                    <Badge variant="outline" class="shrink-0">{{ TYPE_LABELS[be.whenType] }}</Badge>
+                    <span class="text-muted-foreground text-xs">{{ summarize(be) }}</span>
+                  </div>
                 </div>
-                <div class="flex flex-wrap items-center gap-1.5">
-                  <Badge variant="secondary" class="shrink-0">P{{ be.priority }}</Badge>
-                  <Badge variant="outline" class="shrink-0">{{ TYPE_LABELS[be.whenType] }}</Badge>
-                  <span class="text-muted-foreground text-xs">{{ summarize(be) }}</span>
-                </div>
-              </div>
-            </button>
+              </button>
+              <Switch :model-value="!disabledBuiltins.has(be.name)" class="mt-1 shrink-0" title="启用 / 停用内置规则" @update:model-value="(v: boolean) => toggleBuiltin(be.name, v)" />
+            </div>
             <div v-if="expanded.has(be._uid)" class="space-y-1 border-t border-foreground/10 p-3 pl-9 text-xs text-muted-foreground">
               <div><span class="text-foreground">触发：</span>{{ whenPhrase(be) }}</div>
               <div v-if="be.ifs.length"><span class="text-foreground">条件：</span>{{ be.ifs.map(ifPhrase).join('，') }}</div>
@@ -731,7 +769,7 @@ onMounted(load)
           <DialogDescription>选择常用规则插入到编辑器，保存后生效。</DialogDescription>
         </DialogHeader>
         <div class="max-h-[60vh] space-y-2 overflow-y-auto pr-1">
-          <div v-for="pe in presetEdits" :key="pe.edit._uid" class="ring-foreground/10 rounded-xl ring-1">
+          <div v-for="pe in presetEdits" :key="pe.edit._uid" class="border-border overflow-hidden rounded-xl border">
             <div class="flex items-start gap-2 p-3">
               <button type="button" class="min-w-0 flex-1 space-y-1 text-left" @click="togglePreset(pe.edit._uid)">
                 <div class="flex items-center gap-2">
