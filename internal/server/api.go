@@ -17,6 +17,7 @@ import (
 	"github.com/SkyAerope/clowder/internal/app"
 	"github.com/SkyAerope/clowder/internal/config"
 	"github.com/SkyAerope/clowder/internal/models"
+	"github.com/SkyAerope/clowder/internal/provider"
 	"github.com/SkyAerope/clowder/internal/rules"
 	"github.com/SkyAerope/clowder/internal/store"
 	"gopkg.in/yaml.v3"
@@ -282,6 +283,7 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 		keys, _ := a.Store.ListKeys(name)
 		jsonOK(w, map[string]any{
 			"manifest":               manifestView(ps),
+			"manifest_yaml":          readManifestRaw(ps),
 			"models":                 ps.Models,
 			"models_fetched_at":      timeOrNull(ps.ModelsFetchedAt),
 			"keys":                   keyViews(keys),
@@ -289,6 +291,37 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 			"last_register_duration": ps.LastRegisterDuration.Milliseconds(),
 			"last_register_error":    ps.LastRegisterError,
 		})
+	}))
+
+	mux.HandleFunc("PUT /api/admin/providers/{name}/manifest", admin(func(w http.ResponseWriter, r *http.Request) {
+		name := r.PathValue("name")
+		ps := a.Provider(name)
+		if ps == nil {
+			jsonErr(w, http.StatusNotFound, "provider not found")
+			return
+		}
+		var body struct {
+			YAML string `json:"yaml"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			jsonErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		dir := ps.Manifest.Dir
+		// 校验：写入临时目录后用 LoadManifest 解析（含默认值填充与字段校验）
+		if err := validateManifestYAML(body.YAML); err != nil {
+			jsonErr(w, http.StatusBadRequest, "manifest.yaml invalid: "+err.Error())
+			return
+		}
+		if err := os.WriteFile(filepath.Join(dir, "manifest.yaml"), []byte(body.YAML), 0o600); err != nil {
+			jsonErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if err := a.Reload(); err != nil {
+			jsonErr(w, http.StatusInternalServerError, "saved but reload failed: "+err.Error())
+			return
+		}
+		jsonOK(w, map[string]any{"ok": true})
 	}))
 
 	mux.HandleFunc("POST /api/admin/providers/{name}/refresh-models", admin(func(w http.ResponseWriter, r *http.Request) {
@@ -572,6 +605,29 @@ func manifestView(ps *app.ProviderState) map[string]any {
 		"hedge":        m.Routing.Hedge,
 		"has_check":    m.Scripts.Check != "",
 	}
+}
+
+// readManifestRaw 读取 provider 目录下 manifest.yaml 原文。
+func readManifestRaw(ps *app.ProviderState) string {
+	data, err := os.ReadFile(filepath.Join(ps.Manifest.Dir, "manifest.yaml"))
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+// validateManifestYAML 在临时目录解析校验 manifest（含默认值填充与字段校验）。
+func validateManifestYAML(text string) error {
+	tmp, err := os.MkdirTemp("", "clowder-manifest-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmp)
+	if err := os.WriteFile(filepath.Join(tmp, "manifest.yaml"), []byte(text), 0o600); err != nil {
+		return err
+	}
+	_, err = provider.LoadManifest(tmp)
+	return err
 }
 
 func timeOrNull(t time.Time) any {

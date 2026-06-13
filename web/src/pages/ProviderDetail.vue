@@ -1,17 +1,29 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, reactive, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import * as YAML from 'yaml'
 import { api, type KeyRow } from '../api'
 import Card from '../components/Card.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import CopyButton from '../components/CopyButton.vue'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from '@/components/ui/dialog'
 import {
   Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
-import { RefreshCw, Plus, Stethoscope, Ban, CircleCheck, ArrowLeft } from 'lucide-vue-next'
+import { RefreshCw, Plus, Stethoscope, Ban, CircleCheck, ArrowLeft, FileCog, Save } from 'lucide-vue-next'
 import { RouterLink } from 'vue-router'
 
 const route = useRoute()
@@ -19,6 +31,7 @@ const name = route.params.name as string
 
 interface Detail {
   manifest: Record<string, any>
+  manifest_yaml: string
   models: string[]
   models_fetched_at?: string
   keys: KeyRow[]
@@ -100,6 +113,150 @@ function fmtTime(s?: string) {
   return s ? new Date(s).toLocaleString() : '—'
 }
 
+// ---------- manifest 编辑 ----------
+interface MForm {
+  display_name: string
+  description: string
+  base_url: string
+  enabled: boolean
+  format: string
+  key_source: string
+  key_strategy: string
+  whitelist: string
+  blacklist: string
+  register: string
+  check: string
+  register_timeout: number
+  check_timeout: number
+  priority: number
+  weight: number
+  hedge: boolean
+}
+
+const manifestOpen = ref(false)
+const manifestYaml = ref('')
+const mTab = ref<'visual' | 'source'>('visual')
+const mParseError = ref('')
+const mSaving = ref(false)
+let mRaw: Record<string, any> = {} // 保留未覆盖字段（如内嵌 rules）
+let mSyncing = false
+
+const mForm = reactive<MForm>({
+  display_name: '', description: '', base_url: '', enabled: true, format: 'openai-compatible',
+  key_source: 'static', key_strategy: 'sequential', whitelist: '', blacklist: '',
+  register: '', check: '', register_timeout: 300, check_timeout: 60,
+  priority: 100, weight: 1, hedge: false,
+})
+
+function listText(v: any): string {
+  return Array.isArray(v) ? v.map(String).join('\n') : ''
+}
+function splitList(s: string): string[] {
+  return s.split(/[,\n]/).map((x) => x.trim()).filter(Boolean)
+}
+function mNum(v: any, dflt: number): number {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : dflt
+}
+
+function parseManifest(text: string) {
+  const doc = (YAML.parse(text) || {}) as Record<string, any>
+  mRaw = doc
+  const sc = doc.scripts ?? {}
+  const rt = doc.routing ?? {}
+  mForm.display_name = doc.display_name ?? ''
+  mForm.description = doc.description ?? ''
+  mForm.base_url = doc.base_url ?? ''
+  mForm.enabled = doc.enabled ?? true
+  mForm.format = doc.format ?? 'openai-compatible'
+  mForm.key_source = doc.key_source ?? 'static'
+  mForm.key_strategy = doc.key_strategy ?? 'sequential'
+  mForm.whitelist = listText(doc.model_whitelist)
+  mForm.blacklist = listText(doc.model_blacklist)
+  mForm.register = sc.register ?? ''
+  mForm.check = sc.check ?? ''
+  mForm.register_timeout = mNum(sc.register_timeout, 300)
+  mForm.check_timeout = mNum(sc.check_timeout, 60)
+  mForm.priority = mNum(rt.priority, 100)
+  mForm.weight = mNum(rt.weight, 1)
+  mForm.hedge = rt.hedge ?? false
+}
+
+function serializeManifest(): string {
+  const obj: Record<string, any> = { ...mRaw }
+  const setOrDel = (k: string, v: any, empty: boolean) => {
+    if (empty) delete obj[k]
+    else obj[k] = v
+  }
+  setOrDel('display_name', mForm.display_name, !mForm.display_name)
+  setOrDel('description', mForm.description, !mForm.description)
+  obj.base_url = mForm.base_url
+  obj.enabled = mForm.enabled
+  setOrDel('format', mForm.format, !mForm.format)
+  obj.key_source = mForm.key_source
+  obj.key_strategy = mForm.key_strategy
+  setOrDel('model_whitelist', splitList(mForm.whitelist), !mForm.whitelist.trim())
+  setOrDel('model_blacklist', splitList(mForm.blacklist), !mForm.blacklist.trim())
+  const sc: Record<string, any> = { ...(mRaw.scripts ?? {}) }
+  const setSc = (k: string, v: any, empty: boolean) => { if (empty) delete sc[k]; else sc[k] = v }
+  setSc('register', mForm.register, !mForm.register)
+  setSc('check', mForm.check, !mForm.check)
+  setSc('register_timeout', mForm.register_timeout, mForm.register_timeout === 300)
+  setSc('check_timeout', mForm.check_timeout, mForm.check_timeout === 60)
+  setOrDel('scripts', sc, !Object.keys(sc).length)
+  const rt: Record<string, any> = { ...(mRaw.routing ?? {}) }
+  rt.priority = mForm.priority
+  rt.weight = mForm.weight
+  if (mForm.hedge) rt.hedge = true
+  else delete rt.hedge
+  obj.routing = rt
+  return YAML.stringify(obj, { lineWidth: 0 })
+}
+
+function refreshMForm() {
+  try {
+    parseManifest(manifestYaml.value)
+    mParseError.value = ''
+  } catch (e: any) {
+    mParseError.value = `YAML 解析失败，请在「源文件」修正：${e.message}`
+  }
+}
+function serializeMForm() {
+  mSyncing = true
+  manifestYaml.value = serializeManifest()
+  mSyncing = false
+}
+
+watch(mForm, () => {
+  if (manifestOpen.value && mTab.value === 'visual' && !mSyncing) serializeMForm()
+}, { deep: true })
+watch(mTab, (t) => {
+  if (t === 'visual') refreshMForm()
+})
+
+function openManifest() {
+  manifestYaml.value = detail.value?.manifest_yaml ?? ''
+  mTab.value = 'visual'
+  refreshMForm()
+  manifestOpen.value = true
+}
+
+async function saveManifest() {
+  if (mTab.value === 'visual') serializeMForm()
+  mSaving.value = true
+  msg.value = ''
+  try {
+    await api.put(`/api/admin/providers/${name}/manifest`, { yaml: manifestYaml.value })
+    manifestOpen.value = false
+    msg.value = 'manifest 已保存并生效'
+    await load()
+  } catch (e: any) {
+    msg.value = `保存失败: ${e.message}`
+  } finally {
+    mSaving.value = false
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -118,6 +275,9 @@ onMounted(load)
         </Button>
         <Button variant="outline" size="sm" :disabled="refreshing" @click="refreshModels">
           <RefreshCw class="size-4" :class="refreshing && 'animate-spin'" /> 刷新模型
+        </Button>
+        <Button variant="outline" size="sm" @click="openManifest">
+          <FileCog class="size-4" /> 修改 manifest
         </Button>
         <Button v-if="detail.manifest.key_source === 'script'" size="sm" :disabled="registering" @click="register">
           <Plus class="size-4" :class="registering && 'animate-pulse'" /> 注册新 Key
@@ -208,5 +368,137 @@ onMounted(load)
         </Table>
       </div>
     </Card>
+
+    <!-- manifest 编辑器 -->
+    <Dialog v-model:open="manifestOpen">
+      <DialogContent class="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>修改 manifest</DialogTitle>
+          <DialogDescription>编辑 providers/{{ name }}/manifest.yaml，保存后自动校验并热重载。</DialogDescription>
+        </DialogHeader>
+
+        <Tabs v-model="mTab">
+          <TabsList>
+            <TabsTrigger value="visual">可视化</TabsTrigger>
+            <TabsTrigger value="source">源文件</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="visual" class="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
+            <Alert v-if="mParseError" variant="destructive">
+              <AlertDescription>{{ mParseError }}</AlertDescription>
+            </Alert>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div class="space-y-1">
+                <Label class="text-xs text-muted-foreground">显示名 (display_name)</Label>
+                <Input v-model="mForm.display_name" />
+              </div>
+              <div class="space-y-1">
+                <Label class="text-xs text-muted-foreground">格式 (format)</Label>
+                <Input v-model="mForm.format" class="font-mono" />
+              </div>
+              <div class="col-span-2 space-y-1">
+                <Label class="text-xs text-muted-foreground">描述 (description)</Label>
+                <Input v-model="mForm.description" />
+              </div>
+              <div class="col-span-2 space-y-1">
+                <Label class="text-xs text-muted-foreground">base_url</Label>
+                <Input v-model="mForm.base_url" class="font-mono" />
+              </div>
+              <div class="space-y-1">
+                <Label class="text-xs text-muted-foreground">Key 来源 (key_source)</Label>
+                <Select v-model="mForm.key_source">
+                  <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="static">static</SelectItem>
+                    <SelectItem value="script">script</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div class="space-y-1">
+                <Label class="text-xs text-muted-foreground">Key 策略 (key_strategy)</Label>
+                <Select v-model="mForm.key_strategy">
+                  <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sequential">sequential</SelectItem>
+                    <SelectItem value="round-robin">round-robin</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div class="col-span-2 flex items-center justify-between">
+                <Label class="text-xs text-muted-foreground">启用 (enabled)</Label>
+                <Switch v-model="mForm.enabled" />
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div class="space-y-1">
+                <Label class="text-xs text-muted-foreground">模型白名单（每行一个）</Label>
+                <Textarea v-model="mForm.whitelist" :rows="4" class="font-mono text-xs" spellcheck="false" />
+              </div>
+              <div class="space-y-1">
+                <Label class="text-xs text-muted-foreground">模型黑名单（每行一个）</Label>
+                <Textarea v-model="mForm.blacklist" :rows="4" class="font-mono text-xs" spellcheck="false" />
+              </div>
+            </div>
+
+            <div class="space-y-2 rounded-lg border border-dashed border-foreground/20 p-3">
+              <Label class="text-xs text-muted-foreground">脚本 (scripts)</Label>
+              <div class="grid grid-cols-2 gap-3">
+                <div class="space-y-1">
+                  <Label class="text-xs text-muted-foreground">register</Label>
+                  <Input v-model="mForm.register" class="font-mono" placeholder="register.sh" />
+                </div>
+                <div class="space-y-1">
+                  <Label class="text-xs text-muted-foreground">check</Label>
+                  <Input v-model="mForm.check" class="font-mono" placeholder="check.sh" />
+                </div>
+                <div class="space-y-1">
+                  <Label class="text-xs text-muted-foreground">register 超时(秒)</Label>
+                  <Input v-model.number="mForm.register_timeout" type="number" />
+                </div>
+                <div class="space-y-1">
+                  <Label class="text-xs text-muted-foreground">check 超时(秒)</Label>
+                  <Input v-model.number="mForm.check_timeout" type="number" />
+                </div>
+              </div>
+            </div>
+
+            <div class="space-y-2 rounded-lg border border-dashed border-foreground/20 p-3">
+              <Label class="text-xs text-muted-foreground">路由 (routing)</Label>
+              <div class="grid grid-cols-3 gap-3">
+                <div class="space-y-1">
+                  <Label class="text-xs text-muted-foreground">优先级</Label>
+                  <Input v-model.number="mForm.priority" type="number" />
+                </div>
+                <div class="space-y-1">
+                  <Label class="text-xs text-muted-foreground">权重</Label>
+                  <Input v-model.number="mForm.weight" type="number" />
+                </div>
+                <div class="space-y-1">
+                  <Label class="text-xs text-muted-foreground">hedge</Label>
+                  <div class="flex h-8 items-center">
+                    <Switch v-model="mForm.hedge" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <p class="text-xs text-muted-foreground">内嵌 rules 等其它字段会原样保留，可在「源文件」查看。</p>
+          </TabsContent>
+
+          <TabsContent value="source">
+            <Textarea v-model="manifestYaml" :rows="22" class="font-mono text-xs leading-relaxed" spellcheck="false" />
+          </TabsContent>
+        </Tabs>
+
+        <DialogFooter>
+          <Button variant="outline" @click="manifestOpen = false">取消</Button>
+          <Button :disabled="mSaving" @click="saveManifest">
+            <Save class="size-4" /> 保存并生效
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>
