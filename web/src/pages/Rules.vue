@@ -66,7 +66,7 @@ const TRANSPORTS: Opt[] = [
   { v: 'conn_refused', label: '连接被拒' },
   { v: 'tls_error', label: 'TLS 错误' },
   { v: 'connect_timeout', label: '连接超时' },
-  { v: 'stream_cut', label: '流式中断' },
+  { v: 'stream_cut', label: '上游流式中断' },
   { v: 'malformed', label: '响应格式错误' },
 ]
 const IF_FIELDS: Opt[] = [

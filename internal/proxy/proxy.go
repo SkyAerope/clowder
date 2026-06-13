@@ -119,6 +119,9 @@ func (s *Server) runChain(w http.ResponseWriter, r *http.Request, chain *chainSt
 	var lastCand app.Candidate
 
 	for chain.attemptNo = 1; chain.attemptNo <= maxRetries; chain.attemptNo++ {
+		if r.Context().Err() != nil {
+			return // 客户端断开：停止重试
+		}
 		if provIdx >= len(candidates) {
 			break // 候选耗尽
 		}
@@ -150,10 +153,16 @@ func (s *Server) runChain(w http.ResponseWriter, r *http.Request, chain *chainSt
 			}
 		}
 
-		la := s.dial(r.Context(), cand, key.APIKey, payload, clientStream, reqModel, false)
+		la := s.dial(r.Context(), cand, key.APIKey, payload, clientStream, reqModel, s.willWaitOnTTFT(chain, cand))
 		outcome := la.o
+		if outcome.canceled {
+			return // 客户端断开：静默终结，不记错不重试
+		}
 		if la.deliverable() {
 			outcome = s.deliver(w, la, reqModel)
+		}
+		if outcome.canceled {
+			return // 交付途中客户端断开
 		}
 		lastOutcome = outcome
 		lastCand = cand
@@ -208,6 +217,11 @@ func (s *Server) runChain(w http.ResponseWriter, r *http.Request, chain *chainSt
 		case rules.RouteRetrySame:
 			// 原 key 重试（配合 backoff 类 do）
 		case rules.RoutePassthrough:
+			s.writeErrorToClient(w, outcome, cand)
+			return
+		case rules.RouteWait:
+			// 继续等待上游：仅在 TTFT 超时场景有意义，且已由 willWaitOnTTFT 预判走「不取消」路径。
+			// 能进到这里说明上游已真正结束（无可再等），降级为透传当前结果。
 			s.writeErrorToClient(w, outcome, cand)
 			return
 		}
@@ -321,6 +335,7 @@ type attemptOutcome struct {
 	reqHeaders    string
 	reqBody       string
 	transportErr  error
+	canceled      bool // 客户端断开/竞速取消：静默终结，不记错不重试不计成功
 }
 
 func (o *attemptOutcome) errorMsg() string {
@@ -358,7 +373,7 @@ type liveAttempt struct {
 
 // deliverable 报告 dial 是否拿到可交付的 2xx 响应（首字节已就绪）。
 func (la *liveAttempt) deliverable() bool {
-	return la != nil && la.o != nil && !la.o.event.IsError && !la.o.delivered
+	return la != nil && la.o != nil && !la.o.event.IsError && !la.o.delivered && !la.o.canceled
 }
 
 // discard 取消并释放该 attempt 的上游连接（竞速败者 / 提前放弃）。
@@ -376,6 +391,29 @@ func (la *liveAttempt) discard() {
 
 // dial 发起上游请求并推进到"可交付首字节"或失败；不写客户端。
 // hedge=true 时不安装 TTFT 取消计时器（双发场景由协调器决定何时取消慢路）。
+// willWaitOnTTFT 预判：若本次 attempt 发生 TTFT 超时，是否会命中一条 route=wait 的规则。
+// 命中则 dial 不安装 TTFT 自动取消计时器，继续等待上游首字节（「继续等待」语义），
+// 复用 hedge 的「慢路不自动取消」机制。Match 为纯查询无副作用。
+func (s *Server) willWaitOnTTFT(chain *chainState, cand app.Candidate) bool {
+	threshold := s.App.Engine.MinTTFTThreshold()
+	if threshold <= 0 {
+		return false
+	}
+	ev := &rules.Event{
+		Type:             "upstream",
+		Provider:         cand.Provider,
+		Model:            cand.Canonical,
+		TTFTTimeout:      true,
+		TTFTMs:           threshold,
+		IsError:          true,
+		AttemptNo:        chain.attemptNo,
+		KeySwitches:      chain.keySwitches,
+		ProviderSwitches: chain.provSwitches,
+	}
+	m := s.App.Engine.Match(ev)
+	return m != nil && m.Route.Single == rules.RouteWait
+}
+
 func (s *Server) dial(ctx context.Context, cand app.Candidate, apiKey string,
 	payload map[string]any, clientStream bool, reqModel string, hedge bool) *liveAttempt {
 
@@ -435,10 +473,14 @@ func (s *Server) dial(ctx context.Context, cand app.Candidate, apiKey string,
 
 	resp, err := upstreamClient.Do(req)
 	if err != nil {
+		cancel()
+		if ctx.Err() != nil {
+			o.canceled = true // 客户端断开/竞速取消，非上游错误
+			return fail()
+		}
 		o.event.Transport = classifyTransport(err)
 		o.event.IsError = true
 		o.transportErr = err
-		cancel()
 		return fail()
 	}
 	la.resp = resp
@@ -463,10 +505,14 @@ func (s *Server) dial(ctx context.Context, cand app.Candidate, apiKey string,
 		body, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 		resp.Body.Close()
 		if err != nil {
+			cancel()
+			if ctx.Err() != nil {
+				o.canceled = true // 客户端断开/竞速取消，非上游错误
+				return fail()
+			}
 			o.event.Transport = rules.TransportStreamCut
 			o.event.IsError = true
 			o.transportErr = err
-			cancel()
 			return fail()
 		}
 		o.ttftMs = time.Since(start).Milliseconds()
@@ -503,7 +549,7 @@ func (s *Server) dial(ctx context.Context, cand app.Candidate, apiKey string,
 			o.event.StatusCode = 0 // 没有可透传的响应
 		default:
 			if ctx.Err() != nil {
-				o.delivered = true // 客户端/竞速组断开：静默结束，不重试不记错
+				o.canceled = true // 客户端/竞速组断开：静默结束，不重试不记错
 			} else {
 				o.event.Transport = rules.TransportStreamCut
 				o.event.IsError = true
@@ -586,7 +632,7 @@ func (s *Server) deliver(w http.ResponseWriter, la *liveAttempt, reqModel string
 					break // 无 [DONE] 直接 EOF 也算正常结束
 				}
 				if clientGone() {
-					o.delivered = true
+					o.canceled = true
 					return o // 客户端断开
 				}
 				o.event.Transport = rules.TransportStreamCut
@@ -632,6 +678,7 @@ func (s *Server) deliver(w http.ResponseWriter, la *liveAttempt, reqModel string
 			teeWrite(chunk.data)
 		}
 		if !writeChunk(chunk) {
+			o.canceled = true
 			return o // 客户端断开，结束（非上游错误）
 		}
 		if chunk.done {
@@ -646,7 +693,7 @@ func (s *Server) deliver(w http.ResponseWriter, la *liveAttempt, reqModel string
 				break
 			}
 			if clientGone() {
-				o.delivered = true
+				o.canceled = true
 				return o // 客户端断开
 			}
 			// 首字节已发出，上游断流：发 error event 后断开，不重试

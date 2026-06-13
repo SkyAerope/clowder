@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"time"
 
@@ -78,8 +77,8 @@ func (s *Server) runParallel(w http.ResponseWriter, ctx context.Context, chain *
 	// 失败分支照常进引擎跑 do（route 挂起）；因赢家取消而中断的不算真实失败
 	idx := 0
 	for _, f := range fails {
-		if winner != nil && errors.Is(f.la.o.transportErr, context.Canceled) {
-			continue
+		if f.la.o.canceled {
+			continue // 客户端断开/赢家取消：不记错不进引擎
 		}
 		chain.attemptNo = base + idx
 		s.finalizeAttempt(chain, f.spec.cand, f.spec.keyID, f.la.o)
@@ -89,6 +88,9 @@ func (s *Server) runParallel(w http.ResponseWriter, ctx context.Context, chain *
 
 	if winner != nil {
 		o := s.deliver(w, winner.la, reqModel)
+		if o.canceled {
+			return true, nil // 交付途中客户端断开，静默终结
+		}
 		s.finalizeAttempt(chain, winner.spec.cand, winner.spec.keyID, o)
 		if o.delivered && !o.event.IsError {
 			s.App.Pool.OnSuccess(winner.spec.keyID)
