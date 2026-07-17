@@ -473,7 +473,7 @@ onMounted(load)
             <TabsTrigger value="source">源文件</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="visual" class="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
+          <TabsContent value="visual" class="max-h-[60vh] space-y-3 overflow-y-auto overflow-x-hidden px-1 [scrollbar-gutter:stable]">
             <Alert v-if="mParseError" variant="destructive">
               <AlertDescription>{{ mParseError }}</AlertDescription>
             </Alert>
@@ -532,8 +532,7 @@ onMounted(load)
               </div>
             </div>
 
-            <div class="space-y-2 rounded-lg border border-dashed border-foreground/20 p-3">
-              <Label class="text-xs text-muted-foreground">脚本 (scripts)</Label>
+            <Card title="脚本 (scripts)">
               <div class="grid grid-cols-2 gap-3">
                 <div class="space-y-1">
                   <Label class="text-xs text-muted-foreground">register</Label>
@@ -552,10 +551,9 @@ onMounted(load)
                   <Input v-model.number="mForm.check_timeout" type="number" />
                 </div>
               </div>
-            </div>
+            </Card>
 
-            <div class="space-y-2 rounded-lg border border-dashed border-foreground/20 p-3">
-              <Label class="text-xs text-muted-foreground">路由 (routing)</Label>
+            <Card title="路由 (routing)">
               <div class="grid grid-cols-3 gap-3">
                 <div class="space-y-1">
                   <Label class="text-xs text-muted-foreground">优先级</Label>
@@ -572,13 +570,13 @@ onMounted(load)
                   </div>
                 </div>
               </div>
-            </div>
+            </Card>
 
             <p class="text-xs text-muted-foreground">内嵌 rules 等其它字段会原样保留，可在「源文件」查看。</p>
           </TabsContent>
 
           <TabsContent value="source">
-            <Textarea v-model="manifestYaml" :rows="22" class="font-mono text-xs leading-relaxed" spellcheck="false" />
+            <Textarea v-model="manifestYaml" :rows="22" class="font-mono text-xs leading-relaxed max-h-[60vh]" spellcheck="false" />
           </TabsContent>
         </Tabs>
 
