@@ -1,4 +1,4 @@
-// Package pool 实现 per-provider key 池：sequential / round-robin 选择、
+// Package pool 实现 per-provider key 池：sticky / round-robin 选择、
 // singleflight 切换、rate_limited 临时退避（指针可回到原 key）。
 // 内存为主，SQLite 仅持久化。
 package pool
@@ -22,9 +22,9 @@ type Pool struct {
 }
 
 type providerKeys struct {
-	strategy string // sequential | round-robin
+	strategy string // sticky | round-robin
 	keys     []*store.Key
-	cursor   int // sequential: 当前 key 下标；round-robin: 下一个下标
+	cursor   int // sticky: 当前 key 下标；round-robin: 下一个下标
 	// singleflight：切换进行中时其他 goroutine 等待
 	switching bool
 	switchCh  chan struct{}
@@ -47,7 +47,7 @@ func New(st *store.Store, base, max time.Duration) (*Pool, error) {
 func (p *Pool) ensure(provider string) *providerKeys {
 	pk, ok := p.byPro[provider]
 	if !ok {
-		pk = &providerKeys{strategy: "sequential"}
+		pk = &providerKeys{strategy: "sticky"}
 		p.byPro[provider] = pk
 	}
 	return pk
@@ -104,7 +104,7 @@ func (p *Pool) Pick(provider string, exclude map[int64]bool) (*store.Key, error)
 				return k, nil
 			}
 		}
-	default: // sequential：固定从 cursor 开始（用完才换），退避中临时跳后面的 key
+	default: // sticky：固定从 cursor 开始（用完才换），退避中临时跳后面的 key
 		for i := 0; i < n; i++ {
 			k := pk.keys[(pk.cursor+i)%n]
 			if usable(k, now) && !exclude[k.ID] {
@@ -116,7 +116,7 @@ func (p *Pool) Pick(provider string, exclude map[int64]bool) (*store.Key, error)
 	return nil, fmt.Errorf("no usable key for provider %s", provider)
 }
 
-// MarkInvalid 永久禁用 key；sequential 下若是 current key，singleflight 推进指针。
+// MarkInvalid 永久禁用 key；sticky 下若是 current key，singleflight 推进指针。
 func (p *Pool) MarkInvalid(keyID int64) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -131,14 +131,15 @@ func (p *Pool) MarkInvalid(keyID int64) error {
 	if err := p.st.UpdateKeyStatus(keyID, store.KeyInvalid, nil, k.RateLimitCount); err != nil {
 		return err
 	}
-	// sequential：current 被烧掉 → 指针推进到下一个可用 key
+	// sticky：current 被烧掉 → 指针推进到下一个可用 key
 	if pk.strategy != "round-robin" && pk.keys[pk.cursor%len(pk.keys)].ID == keyID {
 		p.advanceLocked(pk)
 	}
 	return nil
 }
 
-// advanceLocked 推进 sequential 指针到下一个可用 key（调用方持锁）。
+// advanceLocked 推进 sticky 指针到下一个可用 key（调用方持锁）。
+// 推进后的新 cursor key 即为 active：上一个请求成功 & 下一个请求将尝试的 key。
 func (p *Pool) advanceLocked(pk *providerKeys) {
 	now := time.Now()
 	n := len(pk.keys)
@@ -146,12 +147,18 @@ func (p *Pool) advanceLocked(pk *providerKeys) {
 		idx := (pk.cursor + i) % n
 		if usable(pk.keys[idx], now) {
 			pk.cursor = idx
+			k := pk.keys[idx]
+			if k.Status != store.KeyActive {
+				k.Status = store.KeyActive
+				k.RateLimitUntil = nil
+				_ = p.st.UpdateKeyStatus(k.ID, store.KeyActive, nil, k.RateLimitCount)
+			}
 			return
 		}
 	}
 }
 
-// MarkRateLimited 临时退避至 until（不推进 sequential 指针——退避结束回原 key）。
+// MarkRateLimited 临时退避至 until（不推进 sticky 指针——退避结束回原 key）。
 func (p *Pool) MarkRateLimited(keyID int64, until time.Time, count int) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()

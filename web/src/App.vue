@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Toaster } from '@/components/ui/sonner'
+import { TooltipProvider } from '@/components/ui/tooltip'
 
 const router = useRouter()
 const mobileOpen = ref(false)
@@ -110,7 +111,9 @@ const navItems = [
     </header>
 
     <main class="mx-auto w-full max-w-7xl flex-1 p-4 md:p-6">
-      <RouterView />
+      <TooltipProvider :delay-duration="600">
+        <RouterView />
+      </TooltipProvider>
     </main>
 
     <Toaster rich-colors close-button />

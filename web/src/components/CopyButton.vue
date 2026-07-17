@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { toast } from 'vue-sonner'
 import { Copy, Check } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 
@@ -13,11 +12,10 @@ async function copy() {
   try {
     await navigator.clipboard.writeText(props.value)
     copied.value = true
-    toast.success(`已复制${props.label ? ' ' + props.label : ''}`)
     clearTimeout(timer)
     timer = setTimeout(() => (copied.value = false), 1500)
   } catch {
-    toast.error('复制失败')
+    // 静默失败，图标不变
   }
 }
 </script>

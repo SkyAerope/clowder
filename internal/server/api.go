@@ -235,8 +235,9 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 	}))
 	mux.HandleFunc("POST /api/admin/keys/{id}/check", admin(func(w http.ResponseWriter, r *http.Request) {
 		id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
-		// 一键 check：同步执行返回结果，同时 chain 回灌规则引擎
-		if err := a.CheckKey(r.Context(), id, true); err != nil {
+		// check：同步执行返回结果，同时 chain 回灌规则引擎
+		status, err := a.CheckKey(r.Context(), id, true)
+		if err != nil {
 			jsonErr(w, http.StatusBadGateway, err.Error())
 			return
 		}
@@ -245,7 +246,9 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 			jsonErr(w, http.StatusNotFound, "key not found")
 			return
 		}
-		jsonOK(w, keyView(k))
+		v := keyView(k)
+		v["check_status"] = status
+		jsonOK(w, v)
 	}))
 
 	mux.HandleFunc("POST /api/admin/register", admin(func(w http.ResponseWriter, r *http.Request) {

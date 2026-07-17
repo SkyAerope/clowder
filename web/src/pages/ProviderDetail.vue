@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { toast } from 'vue-sonner'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
@@ -24,7 +25,8 @@ import {
 import {
   Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
-import { RefreshCw, Plus, Stethoscope, Ban, CircleCheck, ArrowLeft, FileCog, Save } from 'lucide-vue-next'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { RefreshCw, Plus, Stethoscope, Ban, Check, X, ArrowLeft, FileCog, Save, CircleCheck } from 'lucide-vue-next'
 import { RouterLink } from 'vue-router'
 
 const route = useRoute()
@@ -42,11 +44,17 @@ interface Detail {
 }
 
 const detail = ref<Detail | null>(null)
-const msg = ref('')
 const registering = ref(false)
 const refreshing = ref(false)
 const checking = ref(false)
-const busy = ref<Record<number, boolean>>({})
+// { id: { loading, result: 'success'|'error'|null, checkStatus, metadata } }
+const keyState = ref<Record<number, { loading: boolean; result: 'success' | 'error' | null; checkStatus: string; metadata: string }>>({})
+
+function ensureKeyState(id: number) {
+  if (!keyState.value[id]) {
+    keyState.value[id] = { loading: false, result: null, checkStatus: '', metadata: '' }
+  }
+}
 
 async function load() {
   detail.value = await api.get<Detail>(`/api/admin/providers/${name}`)
@@ -54,13 +62,16 @@ async function load() {
 
 async function register() {
   registering.value = true
-  msg.value = ''
   try {
     const r = await api.post<{ registered: number; error?: string }>('/api/admin/register', { provider: name, count: 1 })
-    msg.value = r.error ? `注册失败: ${r.error}` : `已注册 ${r.registered} 个 key`
+    if (r.error) {
+      toast.error(`注册失败: ${r.error}`)
+    } else {
+      toast.success(`已注册 ${r.registered} 个 key`)
+    }
     await load()
   } catch (e: any) {
-    msg.value = `注册失败: ${e.message}`
+    toast.error(`注册失败: ${e.message}`)
   } finally {
     registering.value = false
   }
@@ -68,44 +79,61 @@ async function register() {
 
 async function refreshModels() {
   refreshing.value = true
-  msg.value = ''
   try {
     await api.post(`/api/admin/providers/${name}/refresh-models`)
-    msg.value = '模型已刷新'
+    toast.success('模型已刷新')
     await load()
   } catch (e: any) {
-    msg.value = `刷新失败: ${e.message}`
+    toast.error(`刷新失败: ${e.message}`)
   } finally {
     refreshing.value = false
   }
 }
 
 async function keyAction(k: KeyRow, act: 'disable' | 'enable' | 'check') {
-  busy.value[k.id] = true
-  msg.value = ''
+  if (act === 'check') {
+    ensureKeyState(k.id)
+    keyState.value[k.id] = { loading: true, result: null, checkStatus: '', metadata: '' }
+  }
   try {
-    await api.post(`/api/admin/keys/${k.id}/${act}`)
+    const resp = await api.post<{ check_status: string; metadata: string; status: string }>(`/api/admin/keys/${k.id}/${act}`)
+    if (act === 'check') {
+      keyState.value[k.id] = {
+        loading: false,
+        result: resp.check_status === 'active' ? 'success' : 'error',
+        checkStatus: resp.check_status ?? '',
+        metadata: resp.metadata ?? '',
+      }
+    } else {
+      const labels: Record<string, string> = { disable: '已禁用', enable: '已启用' }
+      toast.success(`key #${k.id} ${labels[act]}`)
+    }
     await load()
   } catch (e: any) {
-    msg.value = `key #${k.id} ${act} 失败: ${e.message}`
-  } finally {
-    busy.value[k.id] = false
+    if (act === 'check') {
+      keyState.value[k.id] = { loading: false, result: 'error', checkStatus: '', metadata: '' }
+    } else {
+      toast.error(`key #${k.id} ${act} 失败: ${e.message}`)
+    }
   }
 }
 
 async function checkAll() {
   checking.value = true
-  msg.value = ''
   let ok = 0, fail = 0
   for (const k of detail.value?.keys ?? []) {
     try {
-      await api.post(`/api/admin/keys/${k.id}/check`)
-      ok++
+      const resp = await api.post<{ check_status: string }>(`/api/admin/keys/${k.id}/check`)
+      if (resp.check_status === 'active') { ok++ } else { fail++ }
     } catch {
       fail++
     }
   }
-  msg.value = `check 完成：成功 ${ok}，失败 ${fail}`
+  if (fail > 0) {
+    toast.warning(`check 完成：成功 ${ok}，失败 ${fail}`)
+  } else {
+    toast.success(`check 完成：全部 ${ok} 个通过`)
+  }
   checking.value = false
   await load()
 }
@@ -144,7 +172,7 @@ let mSyncing = false
 
 const mForm = reactive<MForm>({
   display_name: '', description: '', base_url: '', enabled: true, format: 'openai-compatible',
-  key_source: 'static', key_strategy: 'sequential', whitelist: '', blacklist: '',
+  key_source: 'static', key_strategy: 'sticky', whitelist: '', blacklist: '',
   register: '', check: '', register_timeout: 300, check_timeout: 60,
   priority: 100, weight: 1, hedge: false,
 })
@@ -171,7 +199,7 @@ function parseManifest(text: string) {
   mForm.enabled = doc.enabled ?? true
   mForm.format = doc.format ?? 'openai-compatible'
   mForm.key_source = doc.key_source ?? 'static'
-  mForm.key_strategy = doc.key_strategy ?? 'sequential'
+  mForm.key_strategy = doc.key_strategy ?? 'sticky'
   mForm.whitelist = listText(doc.model_whitelist)
   mForm.blacklist = listText(doc.model_blacklist)
   mForm.register = sc.register ?? ''
@@ -245,14 +273,13 @@ function openManifest() {
 async function saveManifest() {
   if (mTab.value === 'visual') serializeMForm()
   mSaving.value = true
-  msg.value = ''
   try {
     await api.put(`/api/admin/providers/${name}/manifest`, { yaml: manifestYaml.value })
     manifestOpen.value = false
-    msg.value = 'manifest 已保存并生效'
+    toast.success('manifest 已保存并生效')
     await load()
   } catch (e: any) {
-    msg.value = `保存失败: ${e.message}`
+    toast.error(`保存失败: ${e.message}`)
   } finally {
     mSaving.value = false
   }
@@ -285,10 +312,6 @@ onMounted(load)
         </Button>
       </div>
     </div>
-
-    <Alert v-if="msg" :variant="msg.includes('失败') ? 'destructive' : 'default'">
-      <AlertDescription>{{ msg }}</AlertDescription>
-    </Alert>
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <Card title="Manifest">
@@ -350,17 +373,83 @@ onMounted(load)
               <TableCell class="text-xs">{{ fmtTime(k.last_used_at) }}</TableCell>
               <TableCell>
                 <div class="flex justify-end gap-1">
-                  <Button variant="ghost" size="icon-sm" title="一键 check" :disabled="busy[k.id]" @click="keyAction(k, 'check')">
-                    <Stethoscope class="size-4" :class="busy[k.id] && 'animate-pulse'" />
-                  </Button>
-                  <Button v-if="k.status !== 'invalid'" variant="ghost" size="icon-sm" class="text-destructive" title="禁用"
-                    :disabled="busy[k.id]" @click="keyAction(k, 'disable')">
-                    <Ban class="size-4" />
-                  </Button>
-                  <Button v-else variant="ghost" size="icon-sm" class="text-success" title="启用"
-                    :disabled="busy[k.id]" @click="keyAction(k, 'enable')">
-                    <CircleCheck class="size-4" />
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger as-child>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        :disabled="keyState[k.id]?.loading"
+                        @click="keyAction(k, 'check')"
+                      >
+                        <span
+                          class="inline-flex size-4 transition-all duration-300"
+                          :class="keyState[k.id]?.result ? 'scale-100' : 'scale-100'"
+                        >
+                          <Stethoscope
+                            v-if="!keyState[k.id]?.result && !keyState[k.id]?.loading"
+                            class="size-4"
+                          />
+                          <Stethoscope
+                            v-else-if="keyState[k.id]?.loading"
+                            class="size-4 animate-pulse"
+                          />
+                          <Check
+                            v-else-if="keyState[k.id]?.result === 'success'"
+                            class="size-4 text-success animate-scale-in-center"
+                          />
+                          <X
+                            v-else-if="keyState[k.id]?.result === 'error'"
+                            class="size-4 text-destructive animate-scale-in-center"
+                          />
+                        </span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      v-if="keyState[k.id]?.result === 'success'"
+                      class="text-xs max-w-64"
+                    >
+                      <div class="space-y-1">
+                        <p>检查通过：{{ keyState[k.id]?.checkStatus }}</p>
+                        <p v-if="keyState[k.id]?.metadata" class="break-all">metadata: <code class="font-mono text-2xs">{{ keyState[k.id]?.metadata }}</code></p>
+                        <p>点击再次检查</p>
+                      </div>
+                    </TooltipContent>
+                    <TooltipContent
+                      v-else-if="keyState[k.id]?.result === 'error'"
+                      class="text-xs max-w-64"
+                    >
+                      <div class="space-y-1">
+                         <p>状态异常：{{ keyState[k.id]?.checkStatus }}</p>
+                        <p v-if="keyState[k.id]?.metadata" class="break-all">metadata: <code class="font-mono text-2xs">{{ keyState[k.id]?.metadata }}</code></p>
+                        <p>点击再次检查</p>
+                      </div>
+                    </TooltipContent>
+                    <TooltipContent v-else class="text-xs">
+                      <span>检查</span>
+                    </TooltipContent>
+                  </Tooltip>
+                  <Tooltip v-if="k.status !== 'invalid'">
+                    <TooltipTrigger as-child>
+                      <Button variant="ghost" size="icon-sm" class="text-destructive hover:text-destructive"
+                        :disabled="keyState[k.id]?.loading" @click="keyAction(k, 'disable')">
+                        <Ban class="size-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent class="text-xs">
+                      <span>禁用</span>
+                    </TooltipContent>
+                  </Tooltip>
+                  <Tooltip v-else>
+                    <TooltipTrigger as-child>
+                      <Button variant="ghost" size="icon-sm" class="text-success hover:text-success"
+                        :disabled="keyState[k.id]?.loading" @click="keyAction(k, 'enable')">
+                        <CircleCheck class="size-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent class="text-xs">
+                      <span>启用</span>
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
               </TableCell>
             </TableRow>
@@ -421,7 +510,7 @@ onMounted(load)
                 <Select v-model="mForm.key_strategy">
                   <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="sequential">sequential</SelectItem>
+                    <SelectItem value="sticky">sticky</SelectItem>
                     <SelectItem value="round-robin">round-robin</SelectItem>
                   </SelectContent>
                 </Select>

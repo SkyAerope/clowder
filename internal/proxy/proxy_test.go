@@ -49,7 +49,7 @@ display_name: Mock
 base_url: %s
 enabled: true
 key_source: static
-key_strategy: sequential
+key_strategy: sticky
 model_whitelist:
   - mock/test-model-v1
 `, upstreamURL)

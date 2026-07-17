@@ -73,7 +73,8 @@ func (a *App) runAction(act rules.Action, actx *ActionContext) error {
 		if actx.KeyID == 0 {
 			return nil
 		}
-		return a.CheckKey(context.Background(), actx.KeyID, act.Chain)
+		_, err := a.CheckKey(context.Background(), actx.KeyID, act.Chain)
+		return err
 	case "check_keys":
 		scope := actx.Provider
 		if actx.Rule.When.ScopeProvider != "" {
@@ -132,23 +133,25 @@ func (a *App) saveCapture(act rules.Action, actx *ActionContext) {
 }
 
 // CheckKey 对单个 key 跑 check 脚本；chain=true 时结果回灌引擎。
-func (a *App) CheckKey(ctx context.Context, keyID int64, chain bool) error {
+// 返回 check 脚本输出的 status（active|invalid|rate_limited|error），脚本执行失败时返回 error。
+func (a *App) CheckKey(ctx context.Context, keyID int64, chain bool) (string, error) {
 	k := a.Pool.FindByID(keyID)
 	if k == nil {
-		return nil
+		return "", nil
 	}
 	ps := a.Provider(k.Provider)
 	if ps == nil || ps.Manifest.Scripts.Check == "" {
-		return nil // 无 check 脚本（规则校验阶段已警告）
+		return "", nil // 无 check 脚本（规则校验阶段已警告）
 	}
 	res, err := a.Runner.Check(ctx, ps.Manifest.Dir, ps.Manifest.Scripts.Check, k.APIKey,
 		time.Duration(ps.Manifest.Scripts.CheckTimeout)*time.Second)
 	if err != nil {
 		a.Log.Warn("check key", "key", keyID, "error", err)
-		return err
+		return "", err
 	}
 	if res.Metadata != nil {
 		if b, err := json.Marshal(res.Metadata); err == nil {
+			k.Metadata = string(b)
 			a.Store.UpdateKeyMetadata(keyID, string(b))
 		}
 	}
@@ -156,7 +159,7 @@ func (a *App) CheckKey(ctx context.Context, keyID int64, chain bool) error {
 	if chain {
 		a.FeedCheckResult(k.Provider, keyID, res.Status)
 	}
-	return nil
+	return res.Status, nil
 }
 
 // CheckKeys 对某 provider（空 = 全部）的所有 key 逐个跑 check。

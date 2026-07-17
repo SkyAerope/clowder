@@ -18,7 +18,7 @@ const (
 
 // KeyStrategy 取值。
 const (
-	StrategySequential = "sequential"
+	StrategySticky     = "sticky"
 	StrategyRoundRobin = "round-robin"
 )
 
@@ -32,7 +32,7 @@ type Manifest struct {
 	Format      string `yaml:"format"` // openai-compatible
 
 	KeySource   string `yaml:"key_source"`   // script | static
-	KeyStrategy string `yaml:"key_strategy"` // sequential | round-robin
+	KeyStrategy string `yaml:"key_strategy"` // sticky | round-robin
 
 	ModelWhitelist []string `yaml:"model_whitelist"`
 	ModelBlacklist []string `yaml:"model_blacklist"`
@@ -83,7 +83,7 @@ func LoadManifest(dir string) (*Manifest, error) {
 		m.Name = filepath.Base(dir)
 	}
 	if m.KeyStrategy == "" {
-		m.KeyStrategy = StrategySequential
+		m.KeyStrategy = StrategySticky
 	}
 	if m.Scripts.RegisterTimeout <= 0 {
 		m.Scripts.RegisterTimeout = 300
@@ -114,7 +114,7 @@ func (m *Manifest) validate() error {
 		return fmt.Errorf("provider %s: invalid key_source %q", m.Name, m.KeySource)
 	}
 	switch m.KeyStrategy {
-	case StrategySequential, StrategyRoundRobin:
+	case StrategySticky, StrategyRoundRobin:
 	default:
 		return fmt.Errorf("provider %s: invalid key_strategy %q", m.Name, m.KeyStrategy)
 	}
