@@ -6,6 +6,7 @@ import { api, type KeyRow } from '../api'
 import Card from '../components/Card.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import CopyButton from '../components/CopyButton.vue'
+import ModelTagsInput from '../components/ModelTagsInput.vue'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -30,7 +31,7 @@ import {
   DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
-import { RefreshCw, Plus, Stethoscope, Check, X, ArrowLeft, FileCog, Save, MoreVertical, Trash2, CircleCheck, Ban, CircleDashed, SlidersHorizontal } from 'lucide-vue-next'
+import { Plus, Stethoscope, Check, X, ArrowLeft, FileCog, Save, MoreVertical, Trash2, CircleCheck, Ban, CircleDashed, SlidersHorizontal } from 'lucide-vue-next'
 import { RouterLink } from 'vue-router'
 
 const route = useRoute()
@@ -40,7 +41,6 @@ interface Detail {
   manifest: Record<string, any>
   manifest_yaml: string
   models: string[]
-  models_fetched_at?: string
   keys: KeyRow[]
   last_register_at?: string
   last_register_duration: number
@@ -52,7 +52,6 @@ const registering = ref(false)
 const importing = ref(false)
 const importOpen = ref(false)
 const importKeys = ref('')
-const refreshing = ref(false)
 const checking = ref(false)
 const providerEnabledSaving = ref(false)
 // { id: { loading, result: 'success'|'error'|null, checkStatus, metadata } }
@@ -99,19 +98,6 @@ async function importKeysToDatabase() {
     toast.error(`导入失败: ${e.message}`)
   } finally {
     importing.value = false
-  }
-}
-
-async function refreshModels() {
-  refreshing.value = true
-  try {
-    await api.post(`/api/admin/providers/${name}/refresh-models`)
-    toast.success('模型已刷新')
-    await load()
-  } catch (e: any) {
-    toast.error(`刷新失败: ${e.message}`)
-  } finally {
-    refreshing.value = false
   }
 }
 
@@ -219,8 +205,7 @@ interface MForm {
   format: string
   key_strategy: string
   default_check_model: string
-  whitelist: string
-  blacklist: string
+  models: string[]
   register: string
   check: string
   register_timeout: number
@@ -240,17 +225,11 @@ let mSyncing = false
 
 const mForm = reactive<MForm>({
   display_name: '', description: '', base_url: '', format: 'openai-compatible',
-  key_strategy: 'sticky', default_check_model: '', whitelist: '', blacklist: '',
+  key_strategy: 'sticky', default_check_model: '', models: [],
   register: '', check: '', register_timeout: 300, check_timeout: 60,
   priority: 100, weight: 1, hedge: false,
 })
 
-function listText(v: any): string {
-  return Array.isArray(v) ? v.map(String).join('\n') : ''
-}
-function splitList(s: string): string[] {
-  return s.split(/[,\n]/).map((x) => x.trim()).filter(Boolean)
-}
 function mNum(v: any, dflt: number): number {
   const n = Number(v)
   return Number.isFinite(n) ? n : dflt
@@ -267,8 +246,7 @@ function parseManifest(text: string) {
   mForm.format = doc.format ?? 'openai-compatible'
   mForm.key_strategy = doc.key_strategy ?? 'sticky'
   mForm.default_check_model = doc.default_check_model ?? ''
-  mForm.whitelist = listText(doc.model_whitelist)
-  mForm.blacklist = listText(doc.model_blacklist)
+  mForm.models = Array.isArray(doc.models) ? doc.models.map(String) : []
   mForm.register = sc.register ?? ''
   mForm.check = sc.check ?? ''
   mForm.register_timeout = mNum(sc.register_timeout, 300)
@@ -290,8 +268,7 @@ function serializeManifest(): string {
   setOrDel('format', mForm.format, !mForm.format)
   obj.key_strategy = mForm.key_strategy
   setOrDel('default_check_model', mForm.default_check_model, !mForm.default_check_model)
-  setOrDel('model_whitelist', splitList(mForm.whitelist), !mForm.whitelist.trim())
-  setOrDel('model_blacklist', splitList(mForm.blacklist), !mForm.blacklist.trim())
+  setOrDel('models', mForm.models, !mForm.models.length)
   const sc: Record<string, any> = { ...(mRaw.scripts ?? {}) }
   const setSc = (k: string, v: any, empty: boolean) => { if (empty) delete sc[k]; else sc[k] = v }
   setSc('register', mForm.register, !mForm.register)
@@ -374,9 +351,6 @@ onMounted(load)
         <Button v-if="detail.manifest.has_check" variant="outline" size="sm" :disabled="checking" @click="checkAll">
           <Stethoscope class="size-4" :class="checking && 'animate-pulse'" /> 全部 check
         </Button>
-        <Button variant="outline" size="sm" :disabled="refreshing" @click="refreshModels">
-          <RefreshCw class="size-4" :class="refreshing && 'animate-spin'" /> 刷新模型
-        </Button>
         <Button variant="outline" size="sm" @click="openManifest">
           <FileCog class="size-4" /> 修改 manifest
         </Button>
@@ -415,7 +389,7 @@ onMounted(load)
       </Card>
     </div>
 
-    <Card :title="`模型 (${detail.models?.length ?? 0})，拉取于 ${fmtTime(detail.models_fetched_at)}`">
+    <Card :title="`模型 (${detail.models?.length ?? 0})`">
       <div class="flex flex-wrap gap-1.5">
         <Badge v-for="m in detail.models" :key="m" variant="secondary" class="font-mono">{{ m }}</Badge>
         <span v-if="!detail.models?.length" class="text-sm text-muted-foreground">无模型</span>
@@ -633,15 +607,9 @@ onMounted(load)
               </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-3">
-              <div class="space-y-1">
-                <Label class="text-xs text-muted-foreground">模型白名单（每行一个）</Label>
-                <Textarea v-model="mForm.whitelist" :rows="4" class="font-mono text-xs" spellcheck="false" />
-              </div>
-              <div class="space-y-1">
-                <Label class="text-xs text-muted-foreground">模型黑名单（每行一个）</Label>
-                <Textarea v-model="mForm.blacklist" :rows="4" class="font-mono text-xs" spellcheck="false" />
-              </div>
+            <div class="flex flex-col gap-1">
+              <Label class="text-xs text-muted-foreground">模型 (models)</Label>
+              <ModelTagsInput v-model="mForm.models" :provider="name" />
             </div>
 
             <Card title="脚本 (scripts)">
