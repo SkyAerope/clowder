@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -224,6 +225,31 @@ func cmdRegister(args []string) error {
 	return nil
 }
 
+func cmdImport(args []string) error {
+	if len(args) != 2 {
+		return fmt.Errorf("usage: clowder import <provider> <file>")
+	}
+	data, err := os.ReadFile(args[1])
+	if err != nil {
+		return err
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	a, err := app.New(cfg)
+	if err != nil {
+		return err
+	}
+	defer a.Close()
+	added, skipped, err := a.ImportKeys(args[0], strings.Split(string(data), "\n"))
+	if err != nil {
+		return err
+	}
+	fmt.Printf("imported %d keys, skipped %d\n", added, skipped)
+	return nil
+}
+
 // cmdKeys 列出 key。
 func cmdKeys(args []string) error {
 	providerName := ""
@@ -274,11 +300,11 @@ func cmdProviders(args []string) error {
 		return err
 	}
 	defer a.Close()
-	fmt.Printf("%-20s %-10s %-10s %-8s %s\n", "NAME", "SOURCE", "STRATEGY", "KEYS", "MODELS")
+	fmt.Printf("%-20s %-10s %-8s %s\n", "NAME", "STRATEGY", "KEYS", "MODELS")
 	for name, ps := range a.Providers() {
 		usable, total := a.Pool.UsableCount(name)
-		fmt.Printf("%-20s %-10s %-10s %d/%-6d %d\n",
-			name, ps.Manifest.KeySource, ps.Manifest.KeyStrategy, usable, total, len(ps.Models))
+		fmt.Printf("%-20s %-10s %d/%-6d %d\n",
+			name, ps.Manifest.KeyStrategy, usable, total, len(ps.Models))
 	}
 	return nil
 }

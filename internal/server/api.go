@@ -276,6 +276,22 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 		jsonOK(w, resp)
 	}))
 
+	mux.HandleFunc("POST /api/admin/providers/{name}/keys", admin(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Keys string `json:"keys"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			jsonErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		added, skipped, err := a.ImportKeys(r.PathValue("name"), strings.Split(body.Keys, "\n"))
+		if err != nil {
+			jsonErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		jsonOK(w, map[string]any{"added": added, "skipped": skipped})
+	}))
+
 	mux.HandleFunc("GET /api/admin/providers/{name}", admin(func(w http.ResponseWriter, r *http.Request) {
 		name := r.PathValue("name")
 		ps := a.Provider(name)
@@ -597,16 +613,17 @@ func ruleDetail(r *rules.Rule) map[string]any {
 func manifestView(ps *app.ProviderState) map[string]any {
 	m := ps.Manifest
 	return map[string]any{
-		"name":         m.Name,
-		"display_name": m.DisplayName,
-		"base_url":     m.BaseURL,
-		"enabled":      m.Enabled,
-		"key_source":   m.KeySource,
-		"key_strategy": m.KeyStrategy,
-		"priority":     m.Routing.Priority,
-		"weight":       m.Routing.Weight,
-		"hedge":        m.Routing.Hedge,
-		"has_check":    m.Scripts.Check != "",
+		"name":                m.Name,
+		"display_name":        m.DisplayName,
+		"base_url":            m.BaseURL,
+		"enabled":             m.Enabled,
+		"key_strategy":        m.KeyStrategy,
+		"priority":            m.Routing.Priority,
+		"weight":              m.Routing.Weight,
+		"hedge":               m.Routing.Hedge,
+		"has_register":        m.Scripts.Register != "",
+		"has_check":           m.Scripts.Check != "",
+		"default_check_model": m.DefaultCheckModel,
 	}
 }
 

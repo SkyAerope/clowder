@@ -11,7 +11,8 @@ const usage = `clowder — LLM 聚合代理
   clowder start                    启动代理（后台）
   clowder stop                     停止
   clowder status                   状态一览
-  clowder register <provider> [N]  手动注册 N 个 key（默认 1）
+	clowder register <provider> [N]  手动注册 N 个 key（默认 1）
+	clowder import <provider> <file> 从文本文件导入 key（每行一个）
   clowder keys [provider]          列出 key
   clowder providers                列出 provider 及状态
   clowder reload                   热加载配置 + 重新扫描 provider
@@ -34,6 +35,8 @@ func Run(args []string) error {
 		return cmdStatus(rest)
 	case "register":
 		return cmdRegister(rest)
+	case "import":
+		return cmdImport(rest)
 	case "keys":
 		return cmdKeys(rest)
 	case "providers":
