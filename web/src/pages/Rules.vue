@@ -92,7 +92,6 @@ const ACTION_KINDS: Opt[] = [
   { v: 'mark_key', label: '标记 Key 状态' },
   { v: 'mark_model_unhealthy', label: '标记模型不健康' },
   { v: 'mark_provider_unhealthy', label: '标记 Provider 不健康' },
-  { v: 'refresh_models', label: '刷新模型列表' },
   { v: 'check_key', label: '探活当前 Key' },
   { v: 'check_keys', label: '探活全部 Key' },
   { v: 'capture', label: '抓包' },
@@ -349,7 +348,6 @@ function actPhrase(a: EditAction): string {
     case 'mark_key': return `标记 Key=${lbl(MARK_STATUS, a.mark_status)}`
     case 'mark_model_unhealthy': return '标记模型不健康'
     case 'mark_provider_unhealthy': return '标记 Provider 不健康'
-    case 'refresh_models': return '刷新模型'
     case 'check_key': return a.chain ? '探活当前 Key(链式)' : '探活当前 Key'
     case 'check_keys': return a.chain ? '探活全部 Key(链式)' : '探活全部 Key'
     case 'capture': return '抓包'
