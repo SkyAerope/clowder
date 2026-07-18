@@ -137,8 +137,13 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 		for name, ps := range a.Providers() {
 			usable, total := a.Pool.UsableCount(name)
 			var ttftSum, ttftN int64
-			for canonical := range ps.NativeByCanonical {
-				if t, ok := a.Health.AvgTTFT(name, canonical); ok {
+			seenModels := map[string]bool{}
+			for _, native := range ps.Models {
+				if seenModels[native] {
+					continue
+				}
+				seenModels[native] = true
+				if t, ok := a.Health.AvgTTFT(name, native); ok {
 					ttftSum += t
 					ttftN++
 				}
@@ -170,39 +175,44 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 		}
 		out := map[string][]edge{}
 		providers := a.Providers()
-		for _, canonical := range a.Mapping.Canonicals() {
+		mapping := a.MappingSnapshot()
+		for _, canonical := range mapping.Canonicals() {
 			cands := a.CandidatesFor(canonical)
-			best := ""
+			bestProvider, bestNative := "", ""
 			if len(cands) > 0 {
-				best = cands[0].Provider
+				bestProvider, bestNative = cands[0].Provider, cands[0].Native
 			}
 			var edges []edge
 			for name, ps := range providers {
-				native, ok := ps.NativeByCanonical[canonical]
-				if !ok {
-					continue
+				for _, native := range ps.NativesByCanonical[canonical] {
+					t, has := a.Health.AvgTTFT(name, native)
+					edges = append(edges, edge{
+						Provider: name, ProviderDisplayName: ps.Manifest.DisplayName,
+						Native: native, TTFTMs: t, HasTTFT: has,
+						Healthy: a.Health.Routable(name, native),
+						Best:    name == bestProvider && native == bestNative,
+					})
 				}
-				t, has := a.Health.AvgTTFT(name, canonical)
-				edges = append(edges, edge{
-					Provider: name, ProviderDisplayName: ps.Manifest.DisplayName,
-					Native: native, TTFTMs: t, HasTTFT: has,
-					Healthy: a.Health.Routable(name, canonical), Best: name == best,
-				})
 			}
 			if len(edges) > 0 {
 				out[canonical] = edges
 			}
 		}
 		for name, ps := range providers {
+			seenModels := map[string]bool{}
 			for _, native := range ps.Models {
-				if _, mapped := a.Mapping.CanonicalOf(native); mapped {
+				if seenModels[native] || len(mapping.CanonicalsOf(native)) > 0 {
 					continue
 				}
+				seenModels[native] = true
+				t, has := a.Health.AvgTTFT(name, native)
 				out[""] = append(out[""], edge{
 					Provider:            name,
 					ProviderDisplayName: ps.Manifest.DisplayName,
 					Native:              native,
-					Healthy:             a.Health.Routable(name, ""),
+					TTFTMs:              t,
+					HasTTFT:             has,
+					Healthy:             a.Health.Routable(name, native),
 				})
 			}
 		}
@@ -585,7 +595,7 @@ func validationCtx(a *app.App) *rules.ValidationContext {
 	for name, ps := range a.Providers() {
 		ctx.Providers[name] = ps.Manifest.Scripts.Check != ""
 		ms := map[string]bool{}
-		for c := range ps.NativeByCanonical {
+		for c := range ps.NativesByCanonical {
 			ms[c] = true
 		}
 		ctx.ProviderModels[name] = ms
