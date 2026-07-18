@@ -54,6 +54,7 @@ const importOpen = ref(false)
 const importKeys = ref('')
 const refreshing = ref(false)
 const checking = ref(false)
+const providerEnabledSaving = ref(false)
 // { id: { loading, result: 'success'|'error'|null, checkStatus, metadata } }
 const keyState = ref<Record<number, { loading: boolean; result: 'success' | 'error' | null; checkStatus: string; metadata: string }>>({})
 
@@ -193,12 +194,28 @@ function fmtTime(s?: string) {
   return s ? new Date(s).toLocaleString() : '—'
 }
 
+async function setProviderEnabled(enabled: boolean) {
+  if (!detail.value || providerEnabledSaving.value) return
+  providerEnabledSaving.value = true
+  try {
+    const manifest = (YAML.parse(detail.value.manifest_yaml) || {}) as Record<string, unknown>
+    manifest.enabled = enabled
+    const yaml = YAML.stringify(manifest, { lineWidth: 0 })
+    await api.put(`/api/admin/providers/${name}/manifest`, { yaml })
+    toast.success(enabled ? '提供商已启用' : '提供商已停用')
+    await load()
+  } catch (e: any) {
+    toast.error(`更新失败: ${e.message}`)
+  } finally {
+    providerEnabledSaving.value = false
+  }
+}
+
 // ---------- manifest 编辑 ----------
 interface MForm {
   display_name: string
   description: string
   base_url: string
-  enabled: boolean
   format: string
   key_strategy: string
   default_check_model: string
@@ -222,7 +239,7 @@ let mRaw: Record<string, any> = {} // 保留未覆盖字段（如内嵌 rules）
 let mSyncing = false
 
 const mForm = reactive<MForm>({
-  display_name: '', description: '', base_url: '', enabled: true, format: 'openai-compatible',
+  display_name: '', description: '', base_url: '', format: 'openai-compatible',
   key_strategy: 'sticky', default_check_model: '', whitelist: '', blacklist: '',
   register: '', check: '', register_timeout: 300, check_timeout: 60,
   priority: 100, weight: 1, hedge: false,
@@ -247,7 +264,6 @@ function parseManifest(text: string) {
   mForm.display_name = doc.display_name ?? ''
   mForm.description = doc.description ?? ''
   mForm.base_url = doc.base_url ?? ''
-  mForm.enabled = doc.enabled ?? true
   mForm.format = doc.format ?? 'openai-compatible'
   mForm.key_strategy = doc.key_strategy ?? 'sticky'
   mForm.default_check_model = doc.default_check_model ?? ''
@@ -271,7 +287,6 @@ function serializeManifest(): string {
   setOrDel('display_name', mForm.display_name, !mForm.display_name)
   setOrDel('description', mForm.description, !mForm.description)
   obj.base_url = mForm.base_url
-  obj.enabled = mForm.enabled
   setOrDel('format', mForm.format, !mForm.format)
   obj.key_strategy = mForm.key_strategy
   setOrDel('default_check_model', mForm.default_check_model, !mForm.default_check_model)
@@ -347,6 +362,13 @@ onMounted(load)
           <RouterLink to="/providers"><ArrowLeft class="size-4" /></RouterLink>
         </Button>
         <h1 class="text-xl font-semibold">{{ detail.manifest.display_name || name }}</h1>
+        <Switch
+          :model-value="detail.manifest.enabled"
+          :disabled="providerEnabledSaving"
+          aria-label="启用提供商"
+          title="启用 / 停用提供商"
+          @update:model-value="setProviderEnabled"
+        />
       </div>
       <div class="flex gap-2">
         <Button v-if="detail.manifest.has_check" variant="outline" size="sm" :disabled="checking" @click="checkAll">
@@ -373,7 +395,6 @@ onMounted(load)
           <dt class="text-muted-foreground">base_url</dt><dd class="font-mono text-xs break-all">{{ detail.manifest.base_url }}</dd>
           <dt class="text-muted-foreground">key_strategy</dt><dd>{{ detail.manifest.key_strategy }}</dd>
           <dt class="text-muted-foreground">priority / weight</dt><dd>{{ detail.manifest.priority }} / {{ detail.manifest.weight }}</dd>
-          <dt class="text-muted-foreground">enabled</dt><dd>{{ detail.manifest.enabled }}</dd>
           <dt class="text-muted-foreground">注册脚本</dt><dd>{{ detail.manifest.has_register ? '有' : '无' }}</dd>
           <dt class="text-muted-foreground">check 脚本</dt><dd>{{ detail.manifest.has_check ? '有' : '无' }}</dd>
           <template v-if="!detail.manifest.has_check">
@@ -609,10 +630,6 @@ onMounted(load)
                   :disabled="!!mForm.check"
                   placeholder="留空时 check 随机选 healthy 模型"
                 />
-              </div>
-              <div class="col-span-2 flex items-center justify-between">
-                <Label class="text-xs text-muted-foreground">启用 (enabled)</Label>
-                <Switch v-model="mForm.enabled" />
               </div>
             </div>
 
