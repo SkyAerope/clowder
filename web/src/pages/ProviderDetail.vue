@@ -588,7 +588,7 @@ onMounted(load)
                 <Label class="text-xs text-muted-foreground">base_url</Label>
                 <Input v-model="mForm.base_url" class="font-mono" />
               </div>
-              <div class="space-y-1">
+              <div class="col-span-2 space-y-1">
                 <Label class="text-xs text-muted-foreground">Key 策略 (key_strategy)</Label>
                 <Select v-model="mForm.key_strategy">
                   <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
