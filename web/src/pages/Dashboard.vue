@@ -125,7 +125,7 @@ onUnmounted(() => clearInterval(timer))
         >
           <Zap class="size-4" :class="i === 0 ? 'text-primary' : 'text-muted-foreground'" />
           <span class="font-medium">{{ c.canonical }}</span>
-          <span class="text-muted-foreground">via {{ c.provider }}</span>
+          <span class="text-muted-foreground">via {{ c.provider_display_name || c.provider }}</span>
           <Badge v-if="c.has_ttft" variant="secondary">{{ c.ttft_ms }}ms</Badge>
         </div>
       </div>

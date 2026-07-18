@@ -47,7 +47,7 @@ const rows = computed<Row[]>(() => {
         id: `${c}|${e.provider}|${e.native}`,
         canonical: c,
         native: e.native,
-        provider: e.provider,
+        provider: e.provider_display_name || e.provider,
         best: e.best,
         healthy: e.healthy,
         ttft: e.has_ttft ? `${e.ttft_ms}ms` : '',
