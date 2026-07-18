@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"os"
 	"regexp"
-	"sort"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -101,17 +99,10 @@ func (m *Mapping) CanonicalOf(native string) (string, bool) {
 	return "", false
 }
 
-// ResolveRequest 解析客户端请求的 model 名：必须是 canonical name 本身。
-// 未命中时返回最接近的候选（仅用于错误提示，不路由）。
-func (m *Mapping) ResolveRequest(name string) (canonical string, ok bool, suggestion string) {
-	if _, exists := m.canonicalAliases[name]; exists {
-		return name, true, ""
-	}
-	// 也接受直接写 alias 或正则命中（客户端可能照抄 provider 原名）
-	if c, hit := m.CanonicalOf(name); hit {
-		return c, true, ""
-	}
-	return "", false, m.closest(name)
+// IsCanonical 报告 name 是否为精确 canonical 名。
+func (m *Mapping) IsCanonical(name string) bool {
+	_, ok := m.canonicalAliases[name]
+	return ok
 }
 
 // Canonicals 返回全部 canonical name（文件顺序）。
@@ -122,30 +113,4 @@ func (m *Mapping) Canonicals() []string {
 // Aliases 返回某 canonical 的别名列表。
 func (m *Mapping) Aliases(canonical string) []string {
 	return m.canonicalAliases[canonical]
-}
-
-// closest 给 404 错误提示找最接近的 canonical 候选（最长公共子串长度近似）。
-func (m *Mapping) closest(name string) string {
-	name = strings.ToLower(name)
-	best, bestScore := "", 0
-	cands := append([]string(nil), m.canonicalOrder...)
-	sort.Strings(cands)
-	for _, c := range cands {
-		score := commonPrefixLen(name, strings.ToLower(c))
-		if score > bestScore {
-			best, bestScore = c, score
-		}
-	}
-	if bestScore < 3 { // 太不像就不提示，避免误导
-		return ""
-	}
-	return best
-}
-
-func commonPrefixLen(a, b string) int {
-	n := 0
-	for n < len(a) && n < len(b) && a[n] == b[n] {
-		n++
-	}
-	return n
 }
