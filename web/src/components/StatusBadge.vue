@@ -5,6 +5,16 @@ import { cn } from '@/lib/utils'
 
 const props = defineProps<{ status: string }>()
 
+const labels: Record<string, string> = {
+  active: '激活',
+  idle: '空闲',
+  rate_limited: '限流',
+  invalid: '无效',
+  healthy: '健康',
+  probing: '探测中',
+  unhealthy: '不健康',
+}
+
 const cls = computed(() => {
   switch (props.status) {
     case 'healthy':
@@ -24,5 +34,5 @@ const cls = computed(() => {
 </script>
 
 <template>
-  <Badge variant="outline" :class="cn(cls)">{{ status }}</Badge>
+  <Badge variant="outline" :class="cn(cls)">{{ labels[status] ?? status }}</Badge>
 </template>

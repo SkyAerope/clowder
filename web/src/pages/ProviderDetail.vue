@@ -25,8 +25,12 @@ import {
 import {
   Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSub,
+  DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
-import { RefreshCw, Plus, Stethoscope, Ban, Check, X, ArrowLeft, FileCog, Save, CircleCheck } from 'lucide-vue-next'
+import { RefreshCw, Plus, Stethoscope, Check, X, ArrowLeft, FileCog, Save, MoreVertical, Trash2, CircleCheck, Ban, CircleDashed, SlidersHorizontal } from 'lucide-vue-next'
 import { RouterLink } from 'vue-router'
 
 const route = useRoute()
@@ -135,6 +139,33 @@ async function keyAction(k: KeyRow, act: 'disable' | 'enable' | 'check') {
     } else {
       toast.error(`key #${k.id} ${act} 失败: ${e.message}`)
     }
+  }
+}
+
+const keyStatuses = [
+  { value: 'active', label: '激活', icon: CircleCheck },
+  { value: 'idle', label: '空闲', icon: CircleDashed },
+  { value: 'invalid', label: '无效', icon: Ban },
+]
+
+async function setKeyStatus(k: KeyRow, status: string) {
+  if (k.status === status) return
+  try {
+    await api.post(`/api/admin/keys/${k.id}/status`, { status })
+    toast.success(`key #${k.id} 已设为${keyStatuses.find((s) => s.value === status)?.label ?? status}`)
+    await load()
+  } catch (e: any) {
+    toast.error(`key #${k.id} 状态更新失败: ${e.message}`)
+  }
+}
+
+async function deleteKey(k: KeyRow) {
+  try {
+    await api.delete(`/api/admin/keys/${k.id}`)
+    toast.success(`key #${k.id} 已删除`)
+    await load()
+  } catch (e: any) {
+    toast.error(`key #${k.id} 删除失败: ${e.message}`)
   }
 }
 
@@ -327,11 +358,11 @@ onMounted(load)
         <Button variant="outline" size="sm" @click="openManifest">
           <FileCog class="size-4" /> 修改 manifest
         </Button>
-        <Button v-if="detail.manifest.has_register" size="sm" :disabled="registering" @click="register">
-          <Plus class="size-4" :class="registering && 'animate-pulse'" /> 注册新 Key
-        </Button>
         <Button variant="outline" size="sm" @click="importOpen = true">
           <Plus class="size-4" /> 添加 Key
+        </Button>
+        <Button v-if="detail.manifest.has_register" size="sm" :disabled="registering" @click="register">
+          <Plus class="size-4" :class="registering && 'animate-pulse'" /> 注册新 Key
         </Button>
       </div>
     </div>
@@ -406,6 +437,7 @@ onMounted(load)
                       <Button
                         variant="ghost"
                         size="icon-sm"
+                        class="cursor-pointer"
                         :disabled="keyState[k.id]?.loading"
                         @click="keyAction(k, 'check')"
                       >
@@ -456,27 +488,44 @@ onMounted(load)
                       <span>检查</span>
                     </TooltipContent>
                   </Tooltip>
-                  <Tooltip v-if="k.status !== 'invalid'">
+                  <Tooltip>
                     <TooltipTrigger as-child>
-                      <Button variant="ghost" size="icon-sm" class="text-destructive hover:text-destructive"
-                        :disabled="keyState[k.id]?.loading" @click="keyAction(k, 'disable')">
-                        <Ban class="size-4" />
-                      </Button>
+                      <span class="inline-flex">
+                        <DropdownMenu :modal="false">
+                          <DropdownMenuTrigger as-child>
+                            <Button variant="ghost" size="icon-sm" class="cursor-pointer" :disabled="keyState[k.id]?.loading">
+                              <MoreVertical class="size-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuSub>
+                              <DropdownMenuSubTrigger class="cursor-pointer">
+                                <SlidersHorizontal />
+                                更改状态
+                              </DropdownMenuSubTrigger>
+                              <DropdownMenuSubContent>
+                                <DropdownMenuItem
+                                  v-for="status in keyStatuses"
+                                  :key="status.value"
+                                  :disabled="k.status === status.value"
+                                  class="cursor-pointer"
+                                  @select="setKeyStatus(k, status.value)"
+                                >
+                                  <component :is="status.icon" />
+                                  {{ status.label }}
+                                  <Check v-if="k.status === status.value" class="ml-auto" />
+                                </DropdownMenuItem>
+                              </DropdownMenuSubContent>
+                            </DropdownMenuSub>
+                            <DropdownMenuItem variant="destructive" class="cursor-pointer" @select="deleteKey(k)">
+                              <Trash2 />
+                              删除
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </span>
                     </TooltipTrigger>
-                    <TooltipContent class="text-xs">
-                      <span>禁用</span>
-                    </TooltipContent>
-                  </Tooltip>
-                  <Tooltip v-else>
-                    <TooltipTrigger as-child>
-                      <Button variant="ghost" size="icon-sm" class="text-success hover:text-success"
-                        :disabled="keyState[k.id]?.loading" @click="keyAction(k, 'enable')">
-                        <CircleCheck class="size-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent class="text-xs">
-                      <span>启用</span>
-                    </TooltipContent>
+                    <TooltipContent class="text-xs">更多操作</TooltipContent>
                   </Tooltip>
                 </div>
               </TableCell>
@@ -493,7 +542,7 @@ onMounted(load)
           <DialogTitle>添加 Key</DialogTitle>
           <DialogDescription>每行输入一个 key，保存后直接写入数据库。</DialogDescription>
         </DialogHeader>
-        <Textarea v-model="importKeys" :rows="10" class="font-mono text-xs" placeholder="key-one\nkey-two" spellcheck="false" />
+        <Textarea v-model="importKeys" :rows="10" class="max-h-[60vh] overflow-y-auto font-mono text-xs" placeholder="key-one\nkey-two" spellcheck="false" />
         <DialogFooter>
           <Button variant="outline" @click="importOpen = false">取消</Button>
           <Button :disabled="importing || !importKeys.trim()" @click="importKeysToDatabase">
