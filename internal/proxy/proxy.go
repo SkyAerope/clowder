@@ -105,12 +105,13 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) resolveCandidates(reqModel string) ([]app.Candidate, bool) {
-	if s.App.Mapping.IsCanonical(reqModel) {
+	mapping := s.App.MappingSnapshot()
+	if mapping.IsCanonical(reqModel) {
 		return s.App.CandidatesFor(reqModel), true
 	}
 	model, providerName, qualified := s.qualifiedModel(reqModel)
 	if qualified {
-		if s.App.Mapping.IsCanonical(model) {
+		if mapping.IsCanonical(model) {
 			return s.App.CandidatesForProvider(model, providerName)
 		}
 		return s.App.CandidatesForNativeProvider(model, providerName)
@@ -134,6 +135,8 @@ func (s *Server) runChain(w http.ResponseWriter, r *http.Request, chain *chainSt
 	candidates []app.Candidate, payload map[string]any, clientStream bool, reqModel string) {
 
 	maxRetries := s.App.Cfg.Routing.MaxRetries
+	auto := reqModel == "auto"
+	attemptedProviders := map[string]bool{}
 	provIdx := 0
 	usedKeys := map[int64]bool{}
 	var lastOutcome *attemptOutcome
@@ -147,12 +150,13 @@ func (s *Server) runChain(w http.ResponseWriter, r *http.Request, chain *chainSt
 			break // 候选耗尽
 		}
 		cand := candidates[provIdx]
+		attemptedProviders[cand.Provider] = true
 		key, err := s.App.Pool.Pick(cand.Provider, usedKeys)
 		if err != nil {
-			// 全 key 失败 / 无可用 key → model 级 unhealthy，换 provider
-			s.App.Health.MarkModelDown(cand.Provider, cand.Canonical)
-			s.App.Log.Warn("no usable key, marking model down", "provider", cand.Provider, "model", cand.Canonical)
-			provIdx++
+			// 全 key 失败 / 无可用 key → 当前 native 不可路由，推进候选。
+			s.App.Health.MarkModelDown(cand.Provider, cand.Native)
+			s.App.Log.Warn("no usable key, marking model down", "provider", cand.Provider, "model", cand.Native)
+			provIdx = nextCandidateIndex(candidates, provIdx, auto, attemptedProviders)
 			usedKeys = map[int64]bool{}
 			chain.provSwitches++
 			chain.attemptNo-- // 没有真正发请求，不消耗 attempt
@@ -161,15 +165,15 @@ func (s *Server) runChain(w http.ResponseWriter, r *http.Request, chain *chainSt
 
 		// hedge 双发：源/目标 provider 都声明 hedge 且配置了 TTFT 阈值 →
 		// 先发源请求，TTFT 阈值内无首字节则并发拉起下一 provider，首字节先到者赢。
-		if s.hedgeEligible(cand, candidates, provIdx) {
-			if done, lo, lc, advanced := s.runHedge(w, r, chain, candidates, provIdx, key, payload, clientStream, reqModel); advanced {
+		if hedgeIdx, eligible := s.hedgeTarget(cand, candidates, provIdx); eligible {
+			if done, lo, lc, advanced := s.runHedge(w, r, chain, candidates, provIdx, hedgeIdx, key, payload, clientStream, reqModel); advanced {
 				if done {
 					return
 				}
 				lastOutcome, lastCand = lo, lc
-				provIdx += 2
+				provIdx = nextCandidateIndex(candidates, hedgeIdx, auto, attemptedProviders)
 				usedKeys = map[int64]bool{}
-				chain.provSwitches += 2
+				chain.provSwitches++
 				continue
 			}
 		}
@@ -193,7 +197,7 @@ func (s *Server) runChain(w http.ResponseWriter, r *http.Request, chain *chainSt
 		if outcome.delivered {
 			if !outcome.event.IsError {
 				s.App.Pool.OnSuccess(key.ID)
-				s.App.Health.MarkSuccess(cand.Provider, cand.Canonical, outcome.ttftMs)
+				s.App.Health.MarkSuccess(cand.Provider, cand.Native, outcome.ttftMs)
 			}
 			return
 		}
@@ -209,7 +213,7 @@ func (s *Server) runChain(w http.ResponseWriter, r *http.Request, chain *chainSt
 		single := route.Single
 		if route.IsRace() {
 			// 竞速双发：解析为多路并发分支，首字节先到者赢
-			specs := s.buildRaceBranches(route.Race, cand, key, candidates, provIdx, usedKeys)
+			specs := s.buildRaceBranches(route.Race, cand, key, candidates, provIdx, usedKeys, auto)
 			if len(specs) >= 2 {
 				done, lf := s.runParallel(w, r.Context(), chain, specs, payload, clientStream, reqModel)
 				if done {
@@ -219,7 +223,7 @@ func (s *Server) runChain(w http.ResponseWriter, r *http.Request, chain *chainSt
 					lastOutcome, lastCand = lf.la.o, lf.spec.cand
 				}
 				// 全部失败：保守推进到下一个未试 provider（避免重试指数扩散）
-				provIdx++
+				provIdx = nextCandidateIndex(candidates, provIdx, auto, attemptedProviders)
 				usedKeys = map[int64]bool{}
 				chain.provSwitches++
 				continue
@@ -232,7 +236,7 @@ func (s *Server) runChain(w http.ResponseWriter, r *http.Request, chain *chainSt
 			usedKeys[key.ID] = true
 			chain.keySwitches++
 		case rules.RouteNextProvider:
-			provIdx++
+			provIdx = nextCandidateIndex(candidates, provIdx, auto, attemptedProviders)
 			usedKeys = map[int64]bool{}
 			chain.provSwitches++
 		case rules.RouteRetrySame:
@@ -256,6 +260,18 @@ func (s *Server) runChain(w http.ResponseWriter, r *http.Request, chain *chainSt
 	writeJSONError(w, http.StatusServiceUnavailable, "all providers exhausted", "service_unavailable")
 }
 
+func nextCandidateIndex(candidates []app.Candidate, current int, auto bool, attempted map[string]bool) int {
+	if auto {
+		return current + 1
+	}
+	for i := current + 1; i < len(candidates); i++ {
+		if !attempted[candidates[i].Provider] {
+			return i
+		}
+	}
+	return len(candidates)
+}
+
 // finalizeAttempt 对一次完成的 attempt 跑引擎匹配、写日志、执行 do。返回命中规则。
 func (s *Server) finalizeAttempt(chain *chainState, cand app.Candidate, keyID int64, o *attemptOutcome) *rules.Rule {
 	ev := o.event
@@ -274,7 +290,7 @@ func (s *Server) finalizeAttempt(chain *chainState, cand app.Candidate, keyID in
 	if matched != nil {
 		s.App.RunActions(&app.ActionContext{
 			Rule: matched, Event: ev, KeyID: keyID, RequestID: reqID,
-			Provider: cand.Provider, Model: cand.Canonical,
+			Provider: cand.Provider, Model: cand.Canonical, Native: cand.Native,
 			ReqHeaders: o.reqHeaders, ReqBody: o.reqBody,
 			RespHeaders: o.respHeaders, RespBody: string(o.respBody),
 			StatusCode: ev.StatusCode, Fingerprint: ev.FingerprintCache,
@@ -757,7 +773,7 @@ func (s *Server) feedSuccessBodyAsync(base *rules.Event, cand app.Candidate, bod
 		}
 		s.App.RunActions(&app.ActionContext{
 			Rule: r, Event: &ev,
-			Provider: cand.Provider, Model: cand.Canonical,
+			Provider: cand.Provider, Model: cand.Canonical, Native: cand.Native,
 			RespBody: body, StatusCode: ev.StatusCode,
 		})
 	}()

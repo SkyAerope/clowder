@@ -319,13 +319,13 @@ func TestModelsEndpoint(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatal(err)
 	}
-	if resp.Object != "list" || len(resp.Data) != 5 {
+	if resp.Object != "list" || len(resp.Data) != 4 {
 		t.Fatalf("unexpected models response: %+v", resp)
 	}
 	if got := resp.Data[0]; got.ID != "auto" || got.Object != "model" || got.OwnedBy != "clowder" {
 		t.Fatalf("unexpected auto model: %+v", got)
 	}
-	wantIDs := []string{"auto", "mock/test-model-v1", "mock/unmapped-model", "test-model", "test-model-alias"}
+	wantIDs := []string{"auto", "mock/test-model-v1", "mock/unmapped-model", "test-model"}
 	for i, got := range resp.Data {
 		if got.ID != wantIDs[i] || got.Object != "model" || got.OwnedBy != "clowder" {
 			t.Fatalf("model[%d] = %+v, want id %q", i, got, wantIDs[i])
@@ -362,7 +362,7 @@ func TestModelsEndpoint(t *testing.T) {
 	}
 }
 
-func setupQualifiedProviders(t *testing.T, mockURL, otherURL string) http.Handler {
+func setupQualifiedProviders(t *testing.T, mockURL, otherURL string) (*app.App, http.Handler) {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("CLOWDER_HOME", home)
@@ -382,8 +382,9 @@ dashboard: { public: true, admin: false, admin_key: "x" }
 shared-name:
   - mock/canonical-native
   - other/canonical-native
-  - shared-name
   - configured-only-name
+secondary-name:
+  - shared-name
 `), 0o644)
 
 	for _, p := range []struct {
@@ -404,6 +405,7 @@ model_whitelist:
   - %s
   - shared-name
   - %s
+  - shared-name
   - common-native
 `, p.name, p.name, p.url, p.canonicalNative, p.directNative)
 		os.WriteFile(filepath.Join(dir, "manifest.yaml"), []byte(manifest), 0o644)
@@ -423,9 +425,7 @@ model_whitelist:
 		}
 	}
 	t.Cleanup(a.Close)
-	mux := http.NewServeMux()
-	proxy.New(a).Routes(mux)
-	return mux
+	return a, server.New(a).Handler()
 }
 
 func modelUpstream(t *testing.T, calls *int32, models chan<- string, status int) *httptest.Server {
@@ -457,9 +457,17 @@ func TestProviderQualifiedModels(t *testing.T) {
 	defer mock.Close()
 	other := modelUpstream(t, &otherCalls, otherModels, http.StatusOK)
 	defer other.Close()
-	h := setupQualifiedProviders(t, mock.URL, other.URL)
+	a, h := setupQualifiedProviders(t, mock.URL, other.URL)
 
 	t.Run("canonical wins over same-named native", func(t *testing.T) {
+		canonicalCandidates, found := a.CandidatesForProvider("shared-name", "mock")
+		if !found || len(canonicalCandidates) != 1 || canonicalCandidates[0].Native != "mock/canonical-native" {
+			t.Fatalf("canonical candidates = %v, found=%v", canonicalCandidates, found)
+		}
+		nativeCandidates, found := a.CandidatesForNativeProvider("shared-name", "mock")
+		if !found || len(nativeCandidates) != 1 || nativeCandidates[0].Native != "shared-name" {
+			t.Fatalf("native candidates = %v, found=%v", nativeCandidates, found)
+		}
 		w := chatReq(t, h, `{"model":"shared-name:mock","messages":[]}`)
 		if w.Code != http.StatusOK {
 			t.Fatalf("status %d: %s", w.Code, w.Body.String())
@@ -504,6 +512,38 @@ func TestProviderQualifiedModels(t *testing.T) {
 	if got := atomic.LoadInt32(&otherCalls); got != 2 {
 		t.Fatalf("other calls = %d", got)
 	}
+
+	apiReq := httptest.NewRequest("GET", "/api/models", nil)
+	apiW := httptest.NewRecorder()
+	h.ServeHTTP(apiW, apiReq)
+	if apiW.Code != http.StatusOK {
+		t.Fatalf("GET /api/models status %d: %s", apiW.Code, apiW.Body.String())
+	}
+	var graph map[string][]struct {
+		Provider string `json:"provider"`
+		Native   string `json:"native"`
+		Best     bool   `json:"best"`
+	}
+	if err := json.Unmarshal(apiW.Body.Bytes(), &graph); err != nil {
+		t.Fatal(err)
+	}
+	if len(graph["shared-name"]) != 2 || len(graph["secondary-name"]) != 2 {
+		t.Fatalf("unexpected graph: %s", apiW.Body.String())
+	}
+	for canonical, edges := range graph {
+		if canonical == "" {
+			continue
+		}
+		best := 0
+		for _, edge := range edges {
+			if edge.Best {
+				best++
+			}
+		}
+		if best != 1 {
+			t.Fatalf("canonical %q has %d best edges", canonical, best)
+		}
+	}
 }
 
 func TestProviderQualifiedModelNotFound(t *testing.T) {
@@ -514,7 +554,7 @@ func TestProviderQualifiedModelNotFound(t *testing.T) {
 	defer mock.Close()
 	other := modelUpstream(t, &otherCalls, otherModels, http.StatusOK)
 	defer other.Close()
-	h := setupQualifiedProviders(t, mock.URL, other.URL)
+	_, h := setupQualifiedProviders(t, mock.URL, other.URL)
 
 	for _, model := range []string{"shared-name:missing", "other/direct-native:mock", "configured-only-name"} {
 		w := chatReq(t, h, fmt.Sprintf(`{"model":%q,"messages":[]}`, model))
@@ -538,7 +578,7 @@ func TestExactNativeRoutesAcrossProviders(t *testing.T) {
 	defer mock.Close()
 	other := modelUpstream(t, &otherCalls, otherModels, http.StatusOK)
 	defer other.Close()
-	h := setupQualifiedProviders(t, mock.URL, other.URL)
+	_, h := setupQualifiedProviders(t, mock.URL, other.URL)
 
 	w := chatReq(t, h, `{"model":"common-native","messages":[]}`)
 	if w.Code != http.StatusOK {
@@ -569,7 +609,7 @@ func TestProviderQualifiedModelDoesNotFailOver(t *testing.T) {
 	defer mock.Close()
 	other := modelUpstream(t, &otherCalls, otherModels, http.StatusOK)
 	defer other.Close()
-	h := setupQualifiedProviders(t, mock.URL, other.URL)
+	_, h := setupQualifiedProviders(t, mock.URL, other.URL)
 
 	w := chatReq(t, h, `{"model":"shared-name:mock","messages":[]}`)
 	if w.Code != http.StatusInternalServerError {

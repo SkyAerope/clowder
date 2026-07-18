@@ -94,7 +94,7 @@ func (s *Server) runParallel(w http.ResponseWriter, ctx context.Context, chain *
 		s.finalizeAttempt(chain, winner.spec.cand, winner.spec.keyID, o)
 		if o.delivered && !o.event.IsError {
 			s.App.Pool.OnSuccess(winner.spec.keyID)
-			s.App.Health.MarkSuccess(winner.spec.cand.Provider, winner.spec.cand.Canonical, o.ttftMs)
+			s.App.Health.MarkSuccess(winner.spec.cand.Provider, winner.spec.cand.Native, o.ttftMs)
 		}
 		return true, nil
 	}
@@ -108,7 +108,7 @@ func (s *Server) runParallel(w http.ResponseWriter, ctx context.Context, chain *
 
 // buildRaceBranches 把 race 路由动作解析为并发分支（上限 max_parallel_attempts）。
 func (s *Server) buildRaceBranches(actions []string, cand app.Candidate, key *store.Key,
-	candidates []app.Candidate, provIdx int, usedKeys map[int64]bool) []branchSpec {
+	candidates []app.Candidate, provIdx int, usedKeys map[int64]bool, auto bool) []branchSpec {
 
 	maxParallel := s.App.Cfg.Routing.MaxParallelAttempts
 	localUsed := map[int64]bool{}
@@ -116,6 +116,7 @@ func (s *Server) buildRaceBranches(actions []string, cand app.Candidate, key *st
 		localUsed[id] = true
 	}
 	nextProv := provIdx
+	attempted := map[string]bool{cand.Provider: true}
 	var specs []branchSpec
 	for _, act := range actions {
 		if len(specs) >= maxParallel {
@@ -133,11 +134,12 @@ func (s *Server) buildRaceBranches(actions []string, cand app.Candidate, key *st
 			localUsed[nk.ID] = true
 			specs = append(specs, branchSpec{cand: cand, keyID: nk.ID, apiKey: nk.APIKey})
 		case rules.RouteNextProvider:
-			nextProv++
+			nextProv = nextCandidateIndex(candidates, nextProv, auto, attempted)
 			if nextProv >= len(candidates) {
 				continue
 			}
 			nc := candidates[nextProv]
+			attempted[nc.Provider] = true
 			nkey, err := s.App.Pool.Pick(nc.Provider, map[int64]bool{})
 			if err != nil {
 				continue
@@ -148,22 +150,28 @@ func (s *Server) buildRaceBranches(actions []string, cand app.Candidate, key *st
 	return specs
 }
 
-// hedgeEligible 判断当前候选是否满足 hedge 双发前置条件：
-// 配置了 TTFT 阈值，且源 provider 与下一候选 provider 都声明 hedge:true。
-func (s *Server) hedgeEligible(cand app.Candidate, candidates []app.Candidate, provIdx int) bool {
-	return s.App.Engine.MinTTFTThreshold() > 0 &&
-		cand.Hedge && provIdx+1 < len(candidates) && candidates[provIdx+1].Hedge
+// hedgeTarget 返回下一个允许 hedge 的不同 provider 候选。
+func (s *Server) hedgeTarget(cand app.Candidate, candidates []app.Candidate, provIdx int) (int, bool) {
+	if s.App.Engine.MinTTFTThreshold() == 0 || !cand.Hedge {
+		return 0, false
+	}
+	for i := provIdx + 1; i < len(candidates); i++ {
+		if candidates[i].Provider != cand.Provider && candidates[i].Hedge {
+			return i, true
+		}
+	}
+	return 0, false
 }
 
 // runHedge TTFT 超时双发：源请求保持不取消，TTFT 阈值后并发拉起下一 provider，首字节先到者赢。
 // 返回 (是否已交付, 末路失败 outcome, 末路 cand, 是否真的发起了双发)。
 func (s *Server) runHedge(w http.ResponseWriter, r *http.Request, chain *chainState,
-	candidates []app.Candidate, provIdx int, key *store.Key, payload map[string]any,
+	candidates []app.Candidate, provIdx, hedgeIdx int, key *store.Key, payload map[string]any,
 	clientStream bool, reqModel string,
 ) (bool, *attemptOutcome, app.Candidate, bool) {
 
 	cand := candidates[provIdx]
-	nc := candidates[provIdx+1]
+	nc := candidates[hedgeIdx]
 	nkey, err := s.App.Pool.Pick(nc.Provider, map[int64]bool{})
 	if err != nil {
 		return false, nil, app.Candidate{}, false // 无法发起双发，主线走常规单发
