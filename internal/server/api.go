@@ -250,6 +250,29 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 		v["check_status"] = status
 		jsonOK(w, v)
 	}))
+	mux.HandleFunc("POST /api/admin/keys/{id}/status", admin(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Status string `json:"status"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || (body.Status != store.KeyActive && body.Status != store.KeyIdle && body.Status != store.KeyInvalid) {
+			jsonErr(w, http.StatusBadRequest, "invalid key status")
+			return
+		}
+		id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err := a.Pool.SetStatus(id, body.Status); err != nil {
+			jsonErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		jsonOK(w, map[string]any{"ok": true})
+	}))
+	mux.HandleFunc("DELETE /api/admin/keys/{id}", admin(func(w http.ResponseWriter, r *http.Request) {
+		id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+		if err := a.Pool.DeleteKey(id); err != nil {
+			jsonErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		jsonOK(w, map[string]any{"ok": true})
+	}))
 
 	mux.HandleFunc("POST /api/admin/register", admin(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
