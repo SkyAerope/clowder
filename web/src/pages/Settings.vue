@@ -264,10 +264,10 @@ onMounted(load)
     <div class="flex items-center justify-between">
       <h1 class="text-xl font-semibold">设置</h1>
       <div class="flex gap-2">
-        <Button variant="outline" size="sm" :disabled="reloading" @click="reload">
+        <Button variant="outline" :disabled="reloading" @click="reload">
           <RotateCw class="size-4" :class="reloading && 'animate-spin'" /> 重载
         </Button>
-        <Button size="sm" :disabled="saving" @click="save">
+        <Button :disabled="saving" @click="save">
           <Save class="size-4" /> 保存并生效
         </Button>
       </div>
@@ -322,16 +322,20 @@ onMounted(load)
 
           <!-- 面板 -->
           <Card title="面板 (dashboard)">
-            <div class="space-y-3">
-              <div class="flex items-center justify-between">
+            <div class="grid grid-cols-2 gap-3">
+              <div class="space-y-1">
                 <Label class="text-xs text-muted-foreground">公开访问 (public)</Label>
-                <Switch v-model="cfg.dashboard.public" />
-              </div>
-              <div class="flex items-center justify-between">
-                <Label class="text-xs text-muted-foreground">启用管理 (admin)</Label>
-                <Switch v-model="cfg.dashboard.admin" />
+                <div class="flex h-8 items-center">
+                  <Switch v-model="cfg.dashboard.public" />
+                </div>
               </div>
               <div class="space-y-1">
+                <Label class="text-xs text-muted-foreground">启用管理 (admin)</Label>
+                <div class="flex h-8 items-center">
+                  <Switch v-model="cfg.dashboard.admin" />
+                </div>
+              </div>
+              <div class="col-span-2 space-y-1">
                 <Label class="text-xs text-muted-foreground">管理密钥 (admin_key)</Label>
                 <Input v-model="cfg.dashboard.admin_key" class="font-mono" />
               </div>
@@ -381,9 +385,11 @@ onMounted(load)
                 <Label class="text-xs text-muted-foreground">最大并发尝试</Label>
                 <Input v-model.number="cfg.routing.max_parallel_attempts" type="number" />
               </div>
-              <div class="col-span-2 flex items-center justify-between">
+              <div class="col-span-2 space-y-1">
                 <Label class="text-xs text-muted-foreground">上游流式 (upstream_streaming)</Label>
-                <Switch v-model="cfg.routing.upstream_streaming" />
+                <div class="flex h-8 items-center">
+                  <Switch v-model="cfg.routing.upstream_streaming" />
+                </div>
               </div>
             </div>
           </Card>
@@ -413,9 +419,11 @@ onMounted(load)
                 <Label class="text-xs text-muted-foreground">响应缓冲(KB)</Label>
                 <Input v-model.number="cfg.capture.response_buffer_kb" type="number" />
               </div>
-              <div class="col-span-2 flex items-center justify-between">
+              <div class="col-span-2 space-y-1">
                 <Label class="text-xs text-muted-foreground">脱敏 (redact)</Label>
-                <Switch v-model="cfg.capture.redact" />
+                <div class="flex h-8 items-center">
+                  <Switch v-model="cfg.capture.redact" />
+                </div>
               </div>
             </div>
           </Card>
@@ -426,7 +434,7 @@ onMounted(load)
           <div class="space-y-4">
             <div class="space-y-2">
               <div class="flex items-center justify-between">
-                <Label class="text-xs text-muted-foreground">Canonical → 别名（逗号分隔）</Label>
+                <Label class="text-xs text-muted-foreground">客户端请求 ← 上游（逗号分隔）</Label>
                 <Button variant="ghost" size="xs" @click="addEntry"><Plus class="size-3" /> 加映射</Button>
               </div>
               <p v-if="!modelEntries.length" class="text-xs text-muted-foreground">暂无映射</p>
@@ -447,9 +455,9 @@ onMounted(load)
               </div>
               <p v-if="!modelPatterns.length" class="text-xs text-muted-foreground">暂无正则规则</p>
               <div v-for="(p, i) in modelPatterns" :key="i" class="flex flex-wrap items-center gap-2">
-                <Input v-model="p.match" class="w-64 font-mono" placeholder="RE2 正则 (match)" />
-                <span class="text-muted-foreground">→</span>
-                <Input v-model="p.canonical" class="min-w-0 flex-1 font-mono" placeholder="canonical name" />
+                <Input v-model="p.canonical" class="w-52 font-mono" placeholder="canonical name" />
+                <span class="text-muted-foreground">←</span>
+                <Input v-model="p.match" class="min-w-0 flex-1 font-mono" placeholder="RE2 正则 (match)" />
                 <Button variant="ghost" size="icon-sm" class="text-destructive shrink-0" @click="removePattern(i)">
                   <Trash2 class="size-4" />
                 </Button>
