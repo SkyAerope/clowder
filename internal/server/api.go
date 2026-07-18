@@ -158,7 +158,7 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 	}))
 
 	mux.HandleFunc("GET /api/models", public(func(w http.ResponseWriter, r *http.Request) {
-		// 模型路由图：canonical → 各 provider 的 native 名 + TTFT + 是否最优
+		// 模型路由图：canonical → 各 provider 的 native 名；空 canonical 表示未映射。
 		type edge struct {
 			Provider string `json:"provider"`
 			Native   string `json:"native"`
@@ -168,6 +168,7 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 			Best     bool   `json:"best"`
 		}
 		out := map[string][]edge{}
+		providers := a.Providers()
 		for _, canonical := range a.Mapping.Canonicals() {
 			cands := a.CandidatesFor(canonical)
 			best := ""
@@ -175,7 +176,7 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 				best = cands[0].Provider
 			}
 			var edges []edge
-			for name, ps := range a.Providers() {
+			for name, ps := range providers {
 				native, ok := ps.NativeByCanonical[canonical]
 				if !ok {
 					continue
@@ -189,6 +190,18 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 			}
 			if len(edges) > 0 {
 				out[canonical] = edges
+			}
+		}
+		for name, ps := range providers {
+			for _, native := range ps.Models {
+				if _, mapped := a.Mapping.CanonicalOf(native); mapped {
+					continue
+				}
+				out[""] = append(out[""], edge{
+					Provider: name,
+					Native:   native,
+					Healthy:  a.Health.Routable(name, ""),
+				})
 			}
 		}
 		jsonOK(w, out)

@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/SkyAerope/clowder/internal/app"
 	"github.com/SkyAerope/clowder/internal/config"
@@ -82,20 +81,6 @@ func cmdServe(args []string) error {
 		}
 	}()
 
-	// 启动时拉模型列表 + 定期刷新
-	go a.RefreshAllModels(ctx)
-	go func() {
-		t := time.NewTicker(10 * time.Minute)
-		defer t.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-t.C:
-				a.RefreshAllModels(ctx)
-			}
-		}
-	}()
 	// 自动注册循环
 	go a.AutoRegisterLoop(ctx)
 

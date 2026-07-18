@@ -42,7 +42,7 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// handleModels 返回 canonical 聚合列表 + auto。
+// handleModels 返回 canonical、配置别名、provider 原生模型名及 auto 的展平列表。
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	type model struct {
 		ID      string `json:"id"`
@@ -50,8 +50,8 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		OwnedBy string `json:"owned_by"`
 	}
 	list := []model{{ID: "auto", Object: "model", OwnedBy: "clowder"}}
-	for _, c := range s.App.CanonicalModels() {
-		list = append(list, model{ID: c, Object: "model", OwnedBy: "clowder"})
+	for _, name := range s.App.ModelNames() {
+		list = append(list, model{ID: name, Object: "model", OwnedBy: "clowder"})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"object": "list", "data": list})
 }

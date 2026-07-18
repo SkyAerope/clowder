@@ -16,6 +16,7 @@ import (
 	"github.com/SkyAerope/clowder/internal/app"
 	"github.com/SkyAerope/clowder/internal/config"
 	"github.com/SkyAerope/clowder/internal/proxy"
+	"github.com/SkyAerope/clowder/internal/server"
 )
 
 // setup 构建一个指向 mock 上游的完整 clowder 运行态。
@@ -39,6 +40,7 @@ dashboard: { public: true, admin: false, admin_key: "x" }
 	os.WriteFile(filepath.Join(home, "models.yaml"), []byte(`
 test-model:
   - mock/test-model-v1
+  - test-model-alias
 `), 0o644)
 
 	pdir := filepath.Join(home, "providers", "mock")
@@ -51,6 +53,7 @@ enabled: true
 key_strategy: sticky
 model_whitelist:
   - mock/test-model-v1
+  - mock/unmapped-model
 `, upstreamURL)
 	os.WriteFile(filepath.Join(pdir, "manifest.yaml"), []byte(manifest), 0o644)
 
@@ -283,21 +286,78 @@ func TestAuthRequired(t *testing.T) {
 }
 
 func TestModelsEndpoint(t *testing.T) {
-	up := sseUpstream(nil)
+	var upstreamModelCalls int32
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			atomic.AddInt32(&upstreamModelCalls, 1)
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"data":[{"id":"mock/test-model-v1"}]}`)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, sseBody)
+	}))
 	defer up.Close()
-	a, h := setup(t, up.URL, []string{"k1"}, "")
-	a.RefreshAllModels(t.Context())
+	a, _ := setup(t, up.URL, []string{"k1"}, "")
+	h := server.New(a).Handler()
 
 	req := httptest.NewRequest("GET", "/v1/models", nil)
 	req.Header.Set("Authorization", "Bearer test-key")
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
-	body := w.Body.String()
-	if !strings.Contains(body, `"auto"`) || !strings.Contains(body, `"test-model"`) {
-		t.Fatalf("models list: %s", body)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
 	}
-	if strings.Contains(body, "mock/test-model-v1") {
-		t.Fatal("must not expose provider native model names")
+	var resp struct {
+		Object string `json:"object"`
+		Data   []struct {
+			ID      string `json:"id"`
+			Object  string `json:"object"`
+			OwnedBy string `json:"owned_by"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Object != "list" || len(resp.Data) != 5 {
+		t.Fatalf("unexpected models response: %+v", resp)
+	}
+	if got := resp.Data[0]; got.ID != "auto" || got.Object != "model" || got.OwnedBy != "clowder" {
+		t.Fatalf("unexpected auto model: %+v", got)
+	}
+	wantIDs := []string{"auto", "mock/test-model-v1", "mock/unmapped-model", "test-model", "test-model-alias"}
+	for i, got := range resp.Data {
+		if got.ID != wantIDs[i] || got.Object != "model" || got.OwnedBy != "clowder" {
+			t.Fatalf("model[%d] = %+v, want id %q", i, got, wantIDs[i])
+		}
+	}
+	if calls := atomic.LoadInt32(&upstreamModelCalls); calls != 0 {
+		t.Fatalf("GET /v1/models made %d upstream model requests", calls)
+	}
+
+	apiReq := httptest.NewRequest("GET", "/api/models", nil)
+	apiW := httptest.NewRecorder()
+	h.ServeHTTP(apiW, apiReq)
+	if apiW.Code != http.StatusOK {
+		t.Fatalf("GET /api/models status %d: %s", apiW.Code, apiW.Body.String())
+	}
+	var models map[string][]struct {
+		Provider string `json:"provider"`
+		Native   string `json:"native"`
+	}
+	if err := json.Unmarshal(apiW.Body.Bytes(), &models); err != nil {
+		t.Fatal(err)
+	}
+	edges := models["test-model"]
+	if len(edges) != 1 || edges[0].Provider != "mock" || edges[0].Native != "mock/test-model-v1" {
+		t.Fatalf("unexpected /api/models response: %s", apiW.Body.String())
+	}
+	unmapped := models[""]
+	if len(unmapped) != 1 || unmapped[0].Provider != "mock" || unmapped[0].Native != "mock/unmapped-model" {
+		t.Fatalf("unexpected unmapped models: %s", apiW.Body.String())
+	}
+	if calls := atomic.LoadInt32(&upstreamModelCalls); calls != 0 {
+		t.Fatalf("model list endpoints made %d upstream model requests", calls)
 	}
 }
 

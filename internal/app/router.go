@@ -127,3 +127,44 @@ func (a *App) CanonicalModels() []string {
 	sort.Strings(out)
 	return out
 }
+
+// ModelNames 返回当前可用 canonical、配置别名和 provider 原生模型名的展平列表。
+func (a *App) ModelNames() []string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	seen := map[string]bool{}
+	var out []string
+	for _, ps := range a.providers {
+		for _, native := range ps.Models {
+			if native == "" || seen[native] {
+				continue
+			}
+			seen[native] = true
+			out = append(out, native)
+		}
+	}
+	for _, canonical := range a.Mapping.Canonicals() {
+		available := false
+		for name, ps := range a.providers {
+			if _, ok := ps.NativeByCanonical[canonical]; ok && a.Health.Routable(name, canonical) {
+				available = true
+				break
+			}
+		}
+		if !available {
+			continue
+		}
+
+		names := append([]string{canonical}, a.Mapping.Aliases(canonical)...)
+		for _, name := range names {
+			if name == "" || seen[name] {
+				continue
+			}
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
