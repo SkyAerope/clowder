@@ -342,14 +342,15 @@ func TestModelsEndpoint(t *testing.T) {
 		t.Fatalf("GET /api/models status %d: %s", apiW.Code, apiW.Body.String())
 	}
 	var models map[string][]struct {
-		Provider string `json:"provider"`
-		Native   string `json:"native"`
+		Provider            string `json:"provider"`
+		ProviderDisplayName string `json:"provider_display_name"`
+		Native              string `json:"native"`
 	}
 	if err := json.Unmarshal(apiW.Body.Bytes(), &models); err != nil {
 		t.Fatal(err)
 	}
 	edges := models["test-model"]
-	if len(edges) != 1 || edges[0].Provider != "mock" || edges[0].Native != "mock/test-model-v1" {
+	if len(edges) != 1 || edges[0].Provider != "mock" || edges[0].ProviderDisplayName != "Mock" || edges[0].Native != "mock/test-model-v1" {
 		t.Fatalf("unexpected /api/models response: %s", apiW.Body.String())
 	}
 	unmapped := models[""]

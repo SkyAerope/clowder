@@ -7,14 +7,15 @@ import (
 
 // Candidate 一个可路由的 (provider, native model) 组合。
 type Candidate struct {
-	Provider  string `json:"provider"`
-	Native    string `json:"native"` // provider 原生模型名
-	Canonical string `json:"canonical"`
-	Priority  int    `json:"priority"`
-	Weight    int    `json:"weight"`
-	TTFTMs    int64  `json:"ttft_ms"`
-	HasTTFT   bool   `json:"has_ttft"`
-	Hedge     bool   `json:"hedge"`
+	Provider            string `json:"provider"`
+	ProviderDisplayName string `json:"provider_display_name"`
+	Native              string `json:"native"` // provider 原生模型名
+	Canonical           string `json:"canonical"`
+	Priority            int    `json:"priority"`
+	Weight              int    `json:"weight"`
+	TTFTMs              int64  `json:"ttft_ms"`
+	HasTTFT             bool   `json:"has_ttft"`
+	Hedge               bool   `json:"hedge"`
 }
 
 // CandidatesFor 返回支持指定 canonical 的健康候选，按设计排序：
@@ -32,12 +33,13 @@ func (a *App) CandidatesFor(canonical string) []Candidate {
 			continue
 		}
 		c := Candidate{
-			Provider:  name,
-			Native:    native,
-			Canonical: canonical,
-			Priority:  ps.Manifest.Routing.Priority,
-			Weight:    ps.Manifest.Routing.Weight,
-			Hedge:     ps.Manifest.Routing.Hedge,
+			Provider:            name,
+			ProviderDisplayName: ps.Manifest.DisplayName,
+			Native:              native,
+			Canonical:           canonical,
+			Priority:            ps.Manifest.Routing.Priority,
+			Weight:              ps.Manifest.Routing.Weight,
+			Hedge:               ps.Manifest.Routing.Hedge,
 		}
 		c.TTFTMs, c.HasTTFT = a.Health.AvgTTFT(name, canonical)
 		out = append(out, c)
@@ -57,12 +59,13 @@ func (a *App) CandidatesAuto() []Candidate {
 				continue
 			}
 			c := Candidate{
-				Provider:  name,
-				Native:    native,
-				Canonical: canonical,
-				Priority:  ps.Manifest.Routing.Priority,
-				Weight:    ps.Manifest.Routing.Weight,
-				Hedge:     ps.Manifest.Routing.Hedge,
+				Provider:            name,
+				ProviderDisplayName: ps.Manifest.DisplayName,
+				Native:              native,
+				Canonical:           canonical,
+				Priority:            ps.Manifest.Routing.Priority,
+				Weight:              ps.Manifest.Routing.Weight,
+				Hedge:               ps.Manifest.Routing.Hedge,
 			}
 			c.TTFTMs, c.HasTTFT = a.Health.AvgTTFT(name, canonical)
 			out = append(out, c)

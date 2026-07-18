@@ -160,12 +160,13 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 	mux.HandleFunc("GET /api/models", public(func(w http.ResponseWriter, r *http.Request) {
 		// 模型路由图：canonical → 各 provider 的 native 名；空 canonical 表示未映射。
 		type edge struct {
-			Provider string `json:"provider"`
-			Native   string `json:"native"`
-			TTFTMs   int64  `json:"ttft_ms"`
-			HasTTFT  bool   `json:"has_ttft"`
-			Healthy  bool   `json:"healthy"`
-			Best     bool   `json:"best"`
+			Provider            string `json:"provider"`
+			ProviderDisplayName string `json:"provider_display_name"`
+			Native              string `json:"native"`
+			TTFTMs              int64  `json:"ttft_ms"`
+			HasTTFT             bool   `json:"has_ttft"`
+			Healthy             bool   `json:"healthy"`
+			Best                bool   `json:"best"`
 		}
 		out := map[string][]edge{}
 		providers := a.Providers()
@@ -183,9 +184,9 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 				}
 				t, has := a.Health.AvgTTFT(name, canonical)
 				edges = append(edges, edge{
-					Provider: name, Native: native, TTFTMs: t, HasTTFT: has,
-					Healthy: a.Health.Routable(name, canonical),
-					Best:    name == best,
+					Provider: name, ProviderDisplayName: ps.Manifest.DisplayName,
+					Native: native, TTFTMs: t, HasTTFT: has,
+					Healthy: a.Health.Routable(name, canonical), Best: name == best,
 				})
 			}
 			if len(edges) > 0 {
@@ -198,9 +199,10 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 					continue
 				}
 				out[""] = append(out[""], edge{
-					Provider: name,
-					Native:   native,
-					Healthy:  a.Health.Routable(name, ""),
+					Provider:            name,
+					ProviderDisplayName: ps.Manifest.DisplayName,
+					Native:              native,
+					Healthy:             a.Health.Routable(name, ""),
 				})
 			}
 		}
