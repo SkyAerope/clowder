@@ -48,13 +48,11 @@ name: mock
 display_name: Mock
 base_url: %s
 enabled: true
-key_source: static
 key_strategy: sticky
 model_whitelist:
   - mock/test-model-v1
 `, upstreamURL)
 	os.WriteFile(filepath.Join(pdir, "manifest.yaml"), []byte(manifest), 0o644)
-	os.WriteFile(filepath.Join(pdir, "keys.txt"), []byte(strings.Join(keys, "\n")), 0o600)
 
 	if extraRules != "" {
 		os.WriteFile(filepath.Join(home, "rules.yaml"), []byte(extraRules), 0o644)
@@ -66,6 +64,9 @@ model_whitelist:
 	}
 	a, err := app.New(cfg)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := a.ImportKeys("mock", keys); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(a.Close)
@@ -244,10 +245,11 @@ rules:
 	if w.Code != 200 {
 		t.Fatalf("status %d: %s", w.Code, w.Body.String())
 	}
-	// 触发 attempt(1) + race 两路 = 至少 3 条 attempt 落库
+	// 竞速赢家会取消尚未完成的另一分支，因此日志可能是初始 attempt + 赢家
+	// 两条，也可能在取消前完成两路而有三条；不把取消时序作为业务契约。
 	logs, err := a.Store.ListRequests(10, 0)
-	if err != nil || len(logs) < 3 {
-		t.Fatalf("want >=3 request logs, got %d (%v)", len(logs), err)
+	if err != nil || len(logs) < 2 {
+		t.Fatalf("want at least initial and winning attempts, got %d (%v)", len(logs), err)
 	}
 	for _, l := range logs {
 		if l.TraceID != logs[0].TraceID {
@@ -345,4 +347,3 @@ func TestClientDisconnectDuringRead(t *testing.T) {
 			len(logs), logs[0].MatchedRule, logs[0].ErrorMsg)
 	}
 }
-

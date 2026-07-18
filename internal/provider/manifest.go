@@ -5,15 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"gopkg.in/yaml.v3"
-)
-
-// KeySource 取值。
-const (
-	SourceScript = "script"
-	SourceStatic = "static"
 )
 
 // KeyStrategy 取值。
@@ -31,8 +24,11 @@ type Manifest struct {
 	Enabled     bool   `yaml:"enabled"`
 	Format      string `yaml:"format"` // openai-compatible
 
-	KeySource   string `yaml:"key_source"`   // script | static
 	KeyStrategy string `yaml:"key_strategy"` // sticky | round-robin
+
+	// DefaultCheckModel 是无 check 脚本时通过推理端点探活的模型（native 名）。
+	// 当 scripts.check 非空时本字段不生效。
+	DefaultCheckModel string `yaml:"default_check_model"`
 
 	ModelWhitelist []string `yaml:"model_whitelist"`
 	ModelBlacklist []string `yaml:"model_blacklist"`
@@ -104,15 +100,6 @@ func (m *Manifest) validate() error {
 	if m.BaseURL == "" {
 		return fmt.Errorf("provider %s: base_url is required", m.Name)
 	}
-	switch m.KeySource {
-	case SourceScript:
-		if m.Scripts.Register == "" {
-			return fmt.Errorf("provider %s: scripts.register required for key_source=script", m.Name)
-		}
-	case SourceStatic:
-	default:
-		return fmt.Errorf("provider %s: invalid key_source %q", m.Name, m.KeySource)
-	}
 	switch m.KeyStrategy {
 	case StrategySticky, StrategyRoundRobin:
 	default:
@@ -145,26 +132,6 @@ func (m *Manifest) FilterModels(fetched []string) []string {
 		out = append(out, mm)
 	}
 	return out
-}
-
-// StaticKeys 读取 static provider 的 keys.txt（每行一个 key，# 开头为注释）。
-func (m *Manifest) StaticKeys() ([]string, error) {
-	data, err := os.ReadFile(filepath.Join(m.Dir, "keys.txt"))
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var keys []string
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		keys = append(keys, line)
-	}
-	return keys, nil
 }
 
 // ScanDir 扫描 providers/ 目录，加载所有含 manifest.yaml 的子目录。

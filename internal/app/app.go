@@ -53,6 +53,7 @@ type App struct {
 
 	providers map[string]*ProviderState
 	scheduler *rules.Scheduler
+	actionsWG sync.WaitGroup
 
 	Log *slog.Logger
 }
@@ -136,20 +137,6 @@ func (a *App) Reload() error {
 		}
 		states[m.Name] = ps
 		a.Pool.SetStrategy(m.Name, m.KeyStrategy)
-		// static keys
-		if m.KeySource == provider.SourceStatic {
-			keys, err := m.StaticKeys()
-			if err != nil {
-				a.Log.Warn("load static keys", "provider", m.Name, "error", err)
-			}
-			for _, k := range keys {
-				if !a.Pool.HasKey(m.Name, k) {
-					if err := a.Pool.AddKey(&store.Key{Provider: m.Name, APIKey: k, Status: store.KeyIdle}); err != nil {
-						a.Log.Warn("add static key", "provider", m.Name, "error", err)
-					}
-				}
-			}
-		}
 		// manifest 规则
 		rs, err := rules.ParseManifestRules(m.Rules, m.Name)
 		if err != nil {
@@ -324,5 +311,6 @@ func (a *App) Close() {
 		a.scheduler.Stop()
 	}
 	a.mu.Unlock()
+	a.actionsWG.Wait()
 	a.Store.Close()
 }

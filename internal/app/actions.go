@@ -1,12 +1,17 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"math/rand"
+	"net/http"
+	"strings"
 	"time"
 
-	"github.com/SkyAerope/clowder/internal/provider"
 	"github.com/SkyAerope/clowder/internal/rules"
+	"github.com/SkyAerope/clowder/internal/script"
 	"github.com/SkyAerope/clowder/internal/store"
 )
 
@@ -28,7 +33,9 @@ type ActionContext struct {
 func (a *App) RunActions(actx *ActionContext) {
 	for _, act := range actx.Rule.Do {
 		act := act
+		a.actionsWG.Add(1)
 		go func() {
+			defer a.actionsWG.Done()
 			if err := a.runAction(act, actx); err != nil {
 				a.Log.Warn("rule action failed", "rule", actx.Rule.Name, "action", act.Kind, "error", err)
 			}
@@ -132,19 +139,39 @@ func (a *App) saveCapture(act rules.Action, actx *ActionContext) {
 	}
 }
 
-// CheckKey 对单个 key 跑 check 脚本；chain=true 时结果回灌引擎。
-// 返回 check 脚本输出的 status（active|invalid|rate_limited|error），脚本执行失败时返回 error。
+// CheckKey 对单个 key 跑 check；chain=true 时结果回灌引擎。
+// 优先级：scripts.check > default_check_model 推理探活 > 随机 healthy 模型探活。
 func (a *App) CheckKey(ctx context.Context, keyID int64, chain bool) (string, error) {
 	k := a.Pool.FindByID(keyID)
 	if k == nil {
 		return "", nil
 	}
 	ps := a.Provider(k.Provider)
-	if ps == nil || ps.Manifest.Scripts.Check == "" {
-		return "", nil // 无 check 脚本（规则校验阶段已警告）
+	if ps == nil {
+		return "", nil
 	}
-	res, err := a.Runner.Check(ctx, ps.Manifest.Dir, ps.Manifest.Scripts.Check, k.APIKey,
-		time.Duration(ps.Manifest.Scripts.CheckTimeout)*time.Second)
+	m := ps.Manifest
+
+	var (
+		res *script.CheckResult
+		err error
+	)
+	switch {
+	case m.Scripts.Check != "":
+		res, err = a.Runner.Check(ctx, m.Dir, m.Scripts.Check, k.APIKey,
+			time.Duration(m.Scripts.CheckTimeout)*time.Second)
+	default:
+		model := m.DefaultCheckModel
+		if model == "" {
+			model = a.pickRandomHealthyModel(k.Provider)
+		}
+		if model == "" {
+			a.Log.Warn("check key: no check script and no healthy model for probe", "key", keyID, "provider", k.Provider)
+			return "", nil
+		}
+		res, err = a.checkViaChat(ctx, m.BaseURL, k.APIKey, model,
+			time.Duration(m.Scripts.CheckTimeout)*time.Second)
+	}
 	if err != nil {
 		a.Log.Warn("check key", "key", keyID, "error", err)
 		return "", err
@@ -160,6 +187,62 @@ func (a *App) CheckKey(ctx context.Context, keyID int64, chain bool) (string, er
 		a.FeedCheckResult(k.Provider, keyID, res.Status)
 	}
 	return res.Status, nil
+}
+
+func (a *App) pickRandomHealthyModel(providerName string) string {
+	ps := a.Provider(providerName)
+	if ps == nil {
+		return ""
+	}
+	var natives []string
+	for canonical, native := range ps.NativeByCanonical {
+		if a.Health.Routable(providerName, canonical) {
+			natives = append(natives, native)
+		}
+	}
+	if len(natives) == 0 {
+		return ""
+	}
+	return natives[rand.Intn(len(natives))]
+}
+
+func (a *App) checkViaChat(ctx context.Context, baseURL, apiKey, model string, timeout time.Duration) (*script.CheckResult, error) {
+	url := JoinURL(baseURL, "/v1/chat/completions")
+	body := map[string]any{
+		"model":      model,
+		"messages":   []map[string]any{{"role": "user", "content": "yes"}},
+		"max_tokens": 16,
+		"stream":     false,
+	}
+	up, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	cctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(cctx, http.MethodPost, url, bytes.NewReader(up))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return &script.CheckResult{Status: "error"}, err
+	}
+	defer resp.Body.Close()
+	io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
+
+	status := "error"
+	switch {
+	case resp.StatusCode >= 200 && resp.StatusCode < 300:
+		status = "active"
+	case resp.StatusCode == 401 || resp.StatusCode == 403:
+		status = "invalid"
+	case resp.StatusCode == 429:
+		status = "rate_limited"
+	}
+	return &script.CheckResult{Status: status}, nil
 }
 
 // CheckKeys 对某 provider（空 = 全部）的所有 key 逐个跑 check。
@@ -242,8 +325,8 @@ func (a *App) RegisterKey(ctx context.Context, providerName string, manual bool)
 		return nil, errProviderNotFound(providerName)
 	}
 	m := ps.Manifest
-	if m.KeySource != provider.SourceScript {
-		return nil, errNotScriptProvider(providerName)
+	if m.Scripts.Register == "" {
+		return nil, errNoRegisterScript(providerName)
 	}
 	start := time.Now()
 	res, err := a.Runner.Register(ctx, providerName, m.Dir, m.Scripts.Register,
@@ -279,6 +362,29 @@ func (a *App) RegisterKey(ctx context.Context, providerName string, manual bool)
 	return k, nil
 }
 
+// ImportKeys 将 key 写入数据库并同步加入内存池。
+func (a *App) ImportKeys(providerName string, values []string) (added, skipped int, err error) {
+	if a.Provider(providerName) == nil {
+		return 0, 0, errProviderNotFound(providerName)
+	}
+	for _, value := range values {
+		key := strings.TrimSpace(value)
+		if key == "" || strings.HasPrefix(key, "#") {
+			skipped++
+			continue
+		}
+		if a.Pool.HasKey(providerName, key) {
+			skipped++
+			continue
+		}
+		if err := a.Pool.AddKey(&store.Key{Provider: providerName, APIKey: key, Status: store.KeyIdle}); err != nil {
+			return added, skipped, err
+		}
+		added++
+	}
+	return added, skipped, nil
+}
+
 // AutoRegisterLoop 自动注册循环：可用 key 低于 min_active_keys 且总数低于 max_total_keys 时补号。
 func (a *App) AutoRegisterLoop(ctx context.Context) {
 	interval := time.Duration(a.Cfg.Pool.RegisterInterval) * time.Second
@@ -293,7 +399,7 @@ func (a *App) AutoRegisterLoop(ctx context.Context) {
 				continue
 			}
 			for name, ps := range a.Providers() {
-				if ps.Manifest.KeySource != provider.SourceScript {
+				if ps.Manifest.Scripts.Register == "" {
 					continue
 				}
 				usableN, total := a.Pool.UsableCount(name)
@@ -314,8 +420,8 @@ func (a *App) AutoRegisterLoop(ctx context.Context) {
 }
 
 func errProviderNotFound(name string) error { return &appError{"provider " + name + " not found"} }
-func errNotScriptProvider(name string) error {
-	return &appError{"provider " + name + " is not script-sourced"}
+func errNoRegisterScript(name string) error {
+	return &appError{"provider " + name + " has no register script"}
 }
 
 type appError struct{ msg string }
