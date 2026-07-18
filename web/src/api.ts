@@ -4,6 +4,12 @@ export interface Session { admin: boolean; public: boolean }
 
 export const session = ref<Session>({ admin: false, public: true })
 
+let unauthorizedHandler: (() => void) | undefined
+
+export function onUnauthorized(handler: () => void) {
+  unauthorizedHandler = handler
+}
+
 async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
   const res = await fetch(url, {
     method,
@@ -11,7 +17,10 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new ApiError(res.status, (data as any).error || res.statusText)
+  if (!res.ok) {
+    if (res.status === 401) unauthorizedHandler?.()
+    throw new ApiError(res.status, (data as any).error || res.statusText)
+  }
   return data as T
 }
 
@@ -60,6 +69,7 @@ export interface Provider {
 
 export interface ModelEdge {
   provider: string
+  provider_display_name: string
   native: string
   ttft_ms: number
   has_ttft: boolean
@@ -69,6 +79,7 @@ export interface ModelEdge {
 
 export interface Candidate {
   provider: string
+  provider_display_name: string
   native: string
   canonical: string
   priority: number

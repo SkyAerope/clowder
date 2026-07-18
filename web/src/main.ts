@@ -3,7 +3,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import App from './App.vue'
 import './style.css'
 import 'vue-sonner/style.css'
-import { ensureSession, session } from './api'
+import { ensureSession, onUnauthorized, session } from './api'
 
 import Dashboard from './pages/Dashboard.vue'
 import Login from './pages/Login.vue'
@@ -29,6 +29,12 @@ const router = createRouter({
     { path: '/rules', component: Rules, meta: { admin: true } },
     { path: '/settings', component: Settings, meta: { admin: true } },
   ],
+})
+
+onUnauthorized(() => {
+  const current = router.currentRoute.value
+  if (current.path === '/login') return
+  void router.replace({ path: '/login', query: { redirect: current.fullPath } })
 })
 
 // 未登录访问管理页面时跳转到登录页，并记录原始目标用于登录后回跳。
