@@ -12,6 +12,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Save, RotateCw, Plus, Trash2 } from 'lucide-vue-next'
+import { toast } from 'vue-sonner'
 
 // ---------- 可视化表单模型 ----------
 interface CfgForm {
@@ -63,7 +64,6 @@ const cfg = reactive<CfgForm>(defaultCfg())
 const modelEntries = ref<ModelEntry[]>([])
 const modelPatterns = ref<ModelPattern[]>([])
 
-const msg = ref('')
 const saving = ref(false)
 const reloading = ref(false)
 const loaded = ref(false)
@@ -231,12 +231,11 @@ async function load() {
 async function save() {
   if (tab.value === 'visual') serializeForms()
   saving.value = true
-  msg.value = ''
   try {
     await api.put('/api/admin/config', { config_yaml: configYaml.value, models_yaml: modelsYaml.value })
-    msg.value = '已保存并热重载（端口等冷字段需重启进程生效）'
+    toast.success('已保存并热重载（端口等冷字段需重启进程生效）')
   } catch (e: any) {
-    msg.value = `保存失败: ${e.message}`
+    toast.error(`保存失败: ${e.message}`)
   } finally {
     saving.value = false
   }
@@ -244,13 +243,12 @@ async function save() {
 
 async function reload() {
   reloading.value = true
-  msg.value = ''
   try {
     await api.post('/api/admin/reload')
-    msg.value = '已重载'
+    toast.success('已重载')
     await load()
   } catch (e: any) {
-    msg.value = `重载失败: ${e.message}`
+    toast.error(`重载失败: ${e.message}`)
   } finally {
     reloading.value = false
   }
@@ -272,10 +270,6 @@ onMounted(load)
         </Button>
       </div>
     </div>
-
-    <Alert v-if="msg" :variant="msg.includes('失败') ? 'destructive' : 'default'">
-      <AlertDescription>{{ msg }}</AlertDescription>
-    </Alert>
 
     <div v-if="!loaded" class="space-y-4">
       <Skeleton class="h-9 w-48" />
