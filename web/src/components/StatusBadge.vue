@@ -13,6 +13,7 @@ const labels: Record<string, string> = {
   healthy: '健康',
   probing: '探测中',
   unhealthy: '不健康',
+  disabled: '禁用',
 }
 
 const cls = computed(() => {
@@ -27,6 +28,8 @@ const cls = computed(() => {
     case 'unhealthy':
     case 'invalid':
       return 'border-transparent bg-destructive/15 text-destructive'
+    case 'disabled':
+      return 'border-transparent bg-muted text-muted-foreground'
     default:
       return 'border-transparent bg-muted text-muted-foreground'
   }
