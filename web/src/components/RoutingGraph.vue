@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import type { ModelEdge } from '../api'
 
 const props = defineProps<{ models: Record<string, ModelEdge[]> }>()
@@ -20,7 +20,13 @@ interface Row {
   groupSpan: number
 }
 
-const canonicals = computed(() => Object.keys(props.models).sort())
+const canonicals = computed(() =>
+  Object.keys(props.models).sort((a, b) => {
+    if (!a) return 1
+    if (!b) return -1
+    return a.localeCompare(b)
+  }),
+)
 
 // 每条 canonical→provider 映射占一行：客户端名 → 实际模型 → 提供商。
 // provider 不去重，按 canonical 分组连续排列。
@@ -59,6 +65,7 @@ const groups = computed<Group[]>(() => {
   const seen = new Map<string, Group>()
   const out: Group[] = []
   rows.value.forEach((r) => {
+    if (!r.canonical) return
     let g = seen.get(r.canonical)
     if (!g) {
       g = { canonical: r.canonical, start: r.groupStart, span: r.groupSpan }
@@ -116,9 +123,10 @@ function short(s: string, max = 26) {
 <template>
   <div ref="container" class="relative w-full overflow-x-auto overflow-y-hidden">
     <svg :width="width" :height="height" class="block min-w-[680px]">
-      <!-- 连线：canonical → native（曲线），native → provider（曲线） -->
+      <!-- 连线：有 canonical 时连接左列；所有模型均连接 native → provider。 -->
       <template v-for="(r, i) in rows" :key="r.id">
         <path
+          v-if="r.canonical"
           :d="curve(leftDotX, groupY(groups.find((g) => g.canonical === r.canonical)!), midLeftX, rowY(i))"
           fill="none"
           :stroke="strokeOf(r.healthy, r.best)"
@@ -211,10 +219,10 @@ function short(s: string, max = 26) {
       </g>
     </svg>
     <div class="flex flex-wrap items-center gap-4 text-xs text-muted-foreground mt-2">
-      <span class="flex items-center gap-1.5"><span class="inline-block w-5 h-0.5 bg-primary rounded" /> 最优路由</span>
-      <span class="flex items-center gap-1.5"><span class="inline-block w-5 h-0.5 bg-border rounded" /> 备选</span>
+      <span class="flex items-center gap-1.5"><span class="inline-block h-0.5 w-5 rounded bg-primary" /> 最优路由</span>
+      <span class="flex items-center gap-1.5"><span class="inline-block h-0.5 w-5 rounded bg-border" /> 备选</span>
       <span class="flex items-center gap-1.5"><span class="inline-block w-5 border-t-2 border-dashed border-destructive" /> 不健康</span>
-      <span class="ml-auto">客户端名称 → 实际模型 → 提供商</span>
+      <span class="ml-auto">客户端名称（如有）→ 实际模型 → 提供商</span>
     </div>
   </div>
 </template>
