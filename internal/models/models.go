@@ -12,8 +12,8 @@ import (
 
 // Mapping 是加载后的映射表。
 type Mapping struct {
-	// alias（provider 原生模型名）→ canonical
-	aliasToCanonical map[string]string
+	// alias（provider 原生模型名）→ canonicals
+	canonicalsByAlias map[string][]string
 	// canonical → 别名列表（保持文件顺序）
 	canonicalAliases map[string][]string
 	canonicalOrder   []string
@@ -34,8 +34,8 @@ type rawPattern struct {
 // Load 解析 models.yaml。文件不存在返回空映射（不报错）。
 func Load(path string) (*Mapping, error) {
 	m := &Mapping{
-		aliasToCanonical: map[string]string{},
-		canonicalAliases: map[string][]string{},
+		canonicalsByAlias: map[string][]string{},
+		canonicalAliases:  map[string][]string{},
 	}
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
@@ -79,24 +79,34 @@ func Load(path string) (*Mapping, error) {
 		m.canonicalAliases[key] = aliases
 		m.canonicalOrder = append(m.canonicalOrder, key)
 		for _, a := range aliases {
-			m.aliasToCanonical[a] = key
+			m.canonicalsByAlias[a] = appendUnique(m.canonicalsByAlias[a], key)
 		}
 	}
 	return m, nil
 }
 
-// CanonicalOf 将 provider 原生模型名归到 canonical name。
-// 顺序：精确别名 → 正则 pattern；都不命中返回 ("", false)。
-func (m *Mapping) CanonicalOf(native string) (string, bool) {
-	if c, ok := m.aliasToCanonical[native]; ok {
-		return c, true
+// CanonicalsOf 返回 provider 原生模型名关联的全部 canonical name。
+// 精确名称优先；无精确匹配时返回所有命中的正则规则。
+func (m *Mapping) CanonicalsOf(native string) []string {
+	if canonicals := m.canonicalsByAlias[native]; len(canonicals) > 0 {
+		return append([]string(nil), canonicals...)
 	}
+	var out []string
 	for _, p := range m.patterns {
 		if p.re.MatchString(native) {
-			return p.canonical, true
+			out = appendUnique(out, p.canonical)
 		}
 	}
-	return "", false
+	return out
+}
+
+func appendUnique(values []string, value string) []string {
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
 }
 
 // IsCanonical 报告 name 是否为精确 canonical 名。
@@ -112,5 +122,22 @@ func (m *Mapping) Canonicals() []string {
 
 // Aliases 返回某 canonical 的别名列表。
 func (m *Mapping) Aliases(canonical string) []string {
-	return m.canonicalAliases[canonical]
+	return append([]string(nil), m.canonicalAliases[canonical]...)
+}
+
+// Clone 返回映射的独立副本。
+func (m *Mapping) Clone() *Mapping {
+	clone := &Mapping{
+		canonicalsByAlias: map[string][]string{},
+		canonicalAliases:  map[string][]string{},
+		canonicalOrder:    append([]string(nil), m.canonicalOrder...),
+		patterns:          append([]pattern(nil), m.patterns...),
+	}
+	for alias, canonicals := range m.canonicalsByAlias {
+		clone.canonicalsByAlias[alias] = append([]string(nil), canonicals...)
+	}
+	for canonical, aliases := range m.canonicalAliases {
+		clone.canonicalAliases[canonical] = append([]string(nil), aliases...)
+	}
+	return clone
 }
