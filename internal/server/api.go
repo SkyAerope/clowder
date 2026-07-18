@@ -356,7 +356,6 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 			"manifest":               manifestView(ps),
 			"manifest_yaml":          readManifestRaw(ps),
 			"models":                 ps.Models,
-			"models_fetched_at":      timeOrNull(ps.ModelsFetchedAt),
 			"keys":                   keyViews(keys),
 			"last_register_at":       timeOrNull(ps.LastRegisterAt),
 			"last_register_duration": ps.LastRegisterDuration.Milliseconds(),
@@ -395,12 +394,13 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 		jsonOK(w, map[string]any{"ok": true})
 	}))
 
-	mux.HandleFunc("POST /api/admin/providers/{name}/refresh-models", admin(func(w http.ResponseWriter, r *http.Request) {
-		if err := a.RefreshModels(r.Context(), r.PathValue("name")); err != nil {
+	mux.HandleFunc("POST /api/admin/providers/{name}/discover-models", admin(func(w http.ResponseWriter, r *http.Request) {
+		models, err := a.DiscoverModels(r.Context(), r.PathValue("name"))
+		if err != nil {
 			jsonErr(w, http.StatusBadGateway, err.Error())
 			return
 		}
-		jsonOK(w, map[string]any{"ok": true})
+		jsonOK(w, map[string]any{"models": models})
 	}))
 
 	mux.HandleFunc("GET /api/admin/requests", admin(func(w http.ResponseWriter, r *http.Request) {
