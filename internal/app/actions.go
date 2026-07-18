@@ -23,6 +23,7 @@ type ActionContext struct {
 	RequestID int64  // requests 表行 id（capture 关联）
 	Provider  string // 实际 provider
 	Model     string // canonical
+	Native    string // provider 原生模型名
 	// 报文（capture 用；上游结果触发才有）
 	ReqHeaders, ReqBody, RespHeaders, RespBody string
 	StatusCode                                 int
@@ -69,7 +70,9 @@ func (a *App) runAction(act rules.Action, actx *ActionContext) error {
 		}
 		return a.Pool.BackoffKey(actx.KeyID)
 	case "mark_model_unhealthy":
-		a.Health.MarkModelDown(actx.Provider, actx.Model)
+		if actx.Native != "" {
+			a.Health.MarkModelDown(actx.Provider, actx.Native)
+		}
 	case "mark_provider_unhealthy":
 		a.Health.MarkProviderDown(actx.Provider)
 	case "refresh_models":
@@ -195,8 +198,8 @@ func (a *App) pickRandomHealthyModel(providerName string) string {
 		return ""
 	}
 	var natives []string
-	for canonical, native := range ps.NativeByCanonical {
-		if a.Health.Routable(providerName, canonical) {
+	for _, native := range ps.Models {
+		if a.Health.Routable(providerName, native) {
 			natives = append(natives, native)
 		}
 	}

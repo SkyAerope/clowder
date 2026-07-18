@@ -29,8 +29,8 @@ type ProviderState struct {
 	Manifest *provider.Manifest
 	// Models 黑白名单过滤后的 native 模型名
 	Models []string
-	// NativeByCanonical canonical → native（本 provider 视角）
-	NativeByCanonical map[string]string
+	// NativesByCanonical canonical → natives（本 provider 视角）
+	NativesByCanonical map[string][]string
 	// ModelsFetchedAt 上次成功拉取 /models 的时间（零值 = 未拉到，用的白名单 fallback）
 	ModelsFetchedAt time.Time
 	// 注册机状态
@@ -193,16 +193,23 @@ func (a *App) Reload() error {
 	return nil
 }
 
-// rebuildCanonicalLocked 根据当前模型列表重建 canonical → native 映射（持写锁调用）。
+// rebuildCanonicalLocked 根据当前模型列表重建 canonical → natives 映射（持写锁调用）。
 func (a *App) rebuildCanonicalLocked(ps *ProviderState) {
-	ps.NativeByCanonical = map[string]string{}
+	ps.NativesByCanonical = map[string][]string{}
 	for _, native := range ps.Models {
-		if c, ok := a.Mapping.CanonicalOf(native); ok {
-			if _, exists := ps.NativeByCanonical[c]; !exists {
-				ps.NativeByCanonical[c] = native
-			}
+		for _, canonical := range a.Mapping.CanonicalsOf(native) {
+			ps.NativesByCanonical[canonical] = appendUniqueString(ps.NativesByCanonical[canonical], native)
 		}
 	}
+}
+
+func appendUniqueString(values []string, value string) []string {
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
 }
 
 // Providers 返回 provider 运行态快照。
@@ -211,9 +218,29 @@ func (a *App) Providers() map[string]*ProviderState {
 	defer a.mu.RUnlock()
 	out := make(map[string]*ProviderState, len(a.providers))
 	for k, v := range a.providers {
-		out[k] = v
+		manifest := *v.Manifest
+		copyState := &ProviderState{
+			Manifest:             &manifest,
+			Models:               append([]string(nil), v.Models...),
+			NativesByCanonical:   map[string][]string{},
+			ModelsFetchedAt:      v.ModelsFetchedAt,
+			LastRegisterAt:       v.LastRegisterAt,
+			LastRegisterDuration: v.LastRegisterDuration,
+			LastRegisterError:    v.LastRegisterError,
+		}
+		for canonical, natives := range v.NativesByCanonical {
+			copyState.NativesByCanonical[canonical] = append([]string(nil), natives...)
+		}
+		out[k] = copyState
 	}
 	return out
+}
+
+// MappingSnapshot 返回当前映射的独立副本。
+func (a *App) MappingSnapshot() *models.Mapping {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.Mapping.Clone()
 }
 
 // Provider 按名取 provider 状态。

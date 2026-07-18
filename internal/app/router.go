@@ -25,24 +25,11 @@ func (a *App) CandidatesFor(canonical string) []Candidate {
 	defer a.mu.RUnlock()
 	var out []Candidate
 	for name, ps := range a.providers {
-		native, ok := ps.NativeByCanonical[canonical]
-		if !ok {
-			continue
+		for _, native := range ps.NativesByCanonical[canonical] {
+			if a.Health.Routable(name, native) {
+				out = append(out, a.candidate(name, ps, canonical, native))
+			}
 		}
-		if !a.Health.Routable(name, canonical) {
-			continue
-		}
-		c := Candidate{
-			Provider:            name,
-			ProviderDisplayName: ps.Manifest.DisplayName,
-			Native:              native,
-			Canonical:           canonical,
-			Priority:            ps.Manifest.Routing.Priority,
-			Weight:              ps.Manifest.Routing.Weight,
-			Hedge:               ps.Manifest.Routing.Hedge,
-		}
-		c.TTFTMs, c.HasTTFT = a.Health.AvgTTFT(name, canonical)
-		out = append(out, c)
 	}
 	sortCandidates(out)
 	return out
@@ -56,14 +43,18 @@ func (a *App) CandidatesForProvider(canonical, providerName string) ([]Candidate
 	if ps == nil {
 		return nil, false
 	}
-	native, ok := ps.NativeByCanonical[canonical]
-	if !ok {
+	natives := ps.NativesByCanonical[canonical]
+	if len(natives) == 0 {
 		return nil, false
 	}
-	if !a.Health.Routable(providerName, canonical) {
-		return nil, true
+	var out []Candidate
+	for _, native := range natives {
+		if a.Health.Routable(providerName, native) {
+			out = append(out, a.candidate(providerName, ps, canonical, native))
+		}
 	}
-	return []Candidate{a.candidate(providerName, ps, canonical, native)}, true
+	sortCandidates(out)
+	return out, true
 }
 
 // CandidatesForNative 返回提供精确原生模型名的全部健康候选及该模型是否存在。
@@ -77,8 +68,8 @@ func (a *App) CandidatesForNative(native string) ([]Candidate, bool) {
 			continue
 		}
 		found = true
-		canonical := a.canonicalForNative(native)
-		if a.Health.Routable(providerName, canonical) {
+		canonical := a.primaryCanonical(native)
+		if a.Health.Routable(providerName, native) {
 			out = append(out, a.candidate(providerName, ps, canonical, native))
 		}
 	}
@@ -97,8 +88,8 @@ func (a *App) CandidatesForNativeProvider(native, providerName string) ([]Candid
 	if !providerHasNative(ps, native) {
 		return nil, false
 	}
-	canonical := a.canonicalForNative(native)
-	if !a.Health.Routable(providerName, canonical) {
+	canonical := a.primaryCanonical(native)
+	if !a.Health.Routable(providerName, native) {
 		return nil, true
 	}
 	return []Candidate{a.candidate(providerName, ps, canonical, native)}, true
@@ -113,9 +104,9 @@ func providerHasNative(ps *ProviderState, native string) bool {
 	return false
 }
 
-func (a *App) canonicalForNative(native string) string {
-	if canonical, mapped := a.Mapping.CanonicalOf(native); mapped {
-		return canonical
+func (a *App) primaryCanonical(native string) string {
+	if canonicals := a.Mapping.CanonicalsOf(native); len(canonicals) > 0 {
+		return canonicals[0]
 	}
 	return native
 }
@@ -130,31 +121,23 @@ func (a *App) candidate(providerName string, ps *ProviderState, canonical, nativ
 		Weight:              ps.Manifest.Routing.Weight,
 		Hedge:               ps.Manifest.Routing.Hedge,
 	}
-	c.TTFTMs, c.HasTTFT = a.Health.AvgTTFT(providerName, canonical)
+	c.TTFTMs, c.HasTTFT = a.Health.AvgTTFT(providerName, native)
 	return c
 }
 
-// CandidatesAuto auto 模式：所有健康 (provider, canonical) 组合按 TTFT 排序。
+// CandidatesAuto auto 模式：所有健康 (provider, native) 组合按 TTFT 排序。
 func (a *App) CandidatesAuto() []Candidate {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	var out []Candidate
 	for name, ps := range a.providers {
-		for canonical, native := range ps.NativeByCanonical {
-			if !a.Health.Routable(name, canonical) {
+		seen := map[string]bool{}
+		for _, native := range ps.Models {
+			if seen[native] || !a.Health.Routable(name, native) {
 				continue
 			}
-			c := Candidate{
-				Provider:            name,
-				ProviderDisplayName: ps.Manifest.DisplayName,
-				Native:              native,
-				Canonical:           canonical,
-				Priority:            ps.Manifest.Routing.Priority,
-				Weight:              ps.Manifest.Routing.Weight,
-				Hedge:               ps.Manifest.Routing.Hedge,
-			}
-			c.TTFTMs, c.HasTTFT = a.Health.AvgTTFT(name, canonical)
-			out = append(out, c)
+			seen[native] = true
+			out = append(out, a.candidate(name, ps, a.primaryCanonical(native), native))
 		}
 	}
 	// auto：纯按 TTFT（冷启动语义见 sortByTTFT）
@@ -203,13 +186,16 @@ func (a *App) CanonicalModels() []string {
 	seen := map[string]bool{}
 	var out []string
 	for name, ps := range a.providers {
-		for canonical := range ps.NativeByCanonical {
+		for canonical, natives := range ps.NativesByCanonical {
 			if seen[canonical] {
 				continue
 			}
-			if a.Health.Routable(name, canonical) {
-				seen[canonical] = true
-				out = append(out, canonical)
+			for _, native := range natives {
+				if a.Health.Routable(name, native) {
+					seen[canonical] = true
+					out = append(out, canonical)
+					break
+				}
 			}
 		}
 	}
@@ -224,9 +210,9 @@ func (a *App) ModelNames() []string {
 
 	seen := map[string]bool{}
 	var out []string
-	for _, ps := range a.providers {
+	for providerName, ps := range a.providers {
 		for _, native := range ps.Models {
-			if native == "" || seen[native] {
+			if native == "" || seen[native] || !a.Health.Routable(providerName, native) {
 				continue
 			}
 			seen[native] = true
@@ -236,8 +222,13 @@ func (a *App) ModelNames() []string {
 	for _, canonical := range a.Mapping.Canonicals() {
 		available := false
 		for name, ps := range a.providers {
-			if _, ok := ps.NativeByCanonical[canonical]; ok && a.Health.Routable(name, canonical) {
-				available = true
+			for _, native := range ps.NativesByCanonical[canonical] {
+				if a.Health.Routable(name, native) {
+					available = true
+					break
+				}
+			}
+			if available {
 				break
 			}
 		}
@@ -245,13 +236,9 @@ func (a *App) ModelNames() []string {
 			continue
 		}
 
-		names := append([]string{canonical}, a.Mapping.Aliases(canonical)...)
-		for _, name := range names {
-			if name == "" || seen[name] {
-				continue
-			}
-			seen[name] = true
-			out = append(out, name)
+		if !seen[canonical] {
+			seen[canonical] = true
+			out = append(out, canonical)
 		}
 	}
 	sort.Strings(out)
