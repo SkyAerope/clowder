@@ -31,3 +31,4 @@ node_modules/
 # 编辑器
 .idea/
 .vscode/
+.playwright-mcp
