@@ -48,6 +48,92 @@ func (a *App) CandidatesFor(canonical string) []Candidate {
 	return out
 }
 
+// CandidatesForProvider 返回指定 provider 对 canonical 的健康候选及该映射是否存在。
+func (a *App) CandidatesForProvider(canonical, providerName string) ([]Candidate, bool) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	ps := a.providers[providerName]
+	if ps == nil {
+		return nil, false
+	}
+	native, ok := ps.NativeByCanonical[canonical]
+	if !ok {
+		return nil, false
+	}
+	if !a.Health.Routable(providerName, canonical) {
+		return nil, true
+	}
+	return []Candidate{a.candidate(providerName, ps, canonical, native)}, true
+}
+
+// CandidatesForNative 返回提供精确原生模型名的全部健康候选及该模型是否存在。
+func (a *App) CandidatesForNative(native string) ([]Candidate, bool) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	var out []Candidate
+	found := false
+	for providerName, ps := range a.providers {
+		if !providerHasNative(ps, native) {
+			continue
+		}
+		found = true
+		canonical := a.canonicalForNative(native)
+		if a.Health.Routable(providerName, canonical) {
+			out = append(out, a.candidate(providerName, ps, canonical, native))
+		}
+	}
+	sortCandidates(out)
+	return out, found
+}
+
+// CandidatesForNativeProvider 返回指定 provider 对精确原生模型名的健康候选及该模型是否存在。
+func (a *App) CandidatesForNativeProvider(native, providerName string) ([]Candidate, bool) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	ps := a.providers[providerName]
+	if ps == nil {
+		return nil, false
+	}
+	if !providerHasNative(ps, native) {
+		return nil, false
+	}
+	canonical := a.canonicalForNative(native)
+	if !a.Health.Routable(providerName, canonical) {
+		return nil, true
+	}
+	return []Candidate{a.candidate(providerName, ps, canonical, native)}, true
+}
+
+func providerHasNative(ps *ProviderState, native string) bool {
+	for _, model := range ps.Models {
+		if model == native {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *App) canonicalForNative(native string) string {
+	if canonical, mapped := a.Mapping.CanonicalOf(native); mapped {
+		return canonical
+	}
+	return native
+}
+
+func (a *App) candidate(providerName string, ps *ProviderState, canonical, native string) Candidate {
+	c := Candidate{
+		Provider:            providerName,
+		ProviderDisplayName: ps.Manifest.DisplayName,
+		Native:              native,
+		Canonical:           canonical,
+		Priority:            ps.Manifest.Routing.Priority,
+		Weight:              ps.Manifest.Routing.Weight,
+		Hedge:               ps.Manifest.Routing.Hedge,
+	}
+	c.TTFTMs, c.HasTTFT = a.Health.AvgTTFT(providerName, canonical)
+	return c
+}
+
 // CandidatesAuto auto 模式：所有健康 (provider, canonical) 组合按 TTFT 排序。
 func (a *App) CandidatesAuto() []Candidate {
 	a.mu.RLock()

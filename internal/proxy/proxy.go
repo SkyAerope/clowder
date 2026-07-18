@@ -88,16 +88,12 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	if reqModel == "auto" {
 		candidates = s.App.CandidatesAuto()
 	} else {
-		canonical, ok, suggestion := s.App.Mapping.ResolveRequest(reqModel)
-		if !ok {
-			msg := fmt.Sprintf("model %q not found", reqModel)
-			if suggestion != "" {
-				msg += fmt.Sprintf(" (did you mean %q?)", suggestion)
-			}
-			writeJSONError(w, http.StatusNotFound, msg, "invalid_request_error")
+		var found bool
+		candidates, found = s.resolveCandidates(reqModel)
+		if !found {
+			writeJSONError(w, http.StatusNotFound, fmt.Sprintf("model %q not found", reqModel), "invalid_request_error")
 			return
 		}
-		candidates = s.App.CandidatesFor(canonical)
 	}
 	if len(candidates) == 0 {
 		writeJSONError(w, http.StatusServiceUnavailable, "no healthy provider for model "+reqModel, "service_unavailable")
@@ -106,6 +102,31 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 
 	chain := &chainState{traceID: uuid.NewString()}
 	s.runChain(w, r, chain, candidates, payload, clientStream, reqModel)
+}
+
+func (s *Server) resolveCandidates(reqModel string) ([]app.Candidate, bool) {
+	if s.App.Mapping.IsCanonical(reqModel) {
+		return s.App.CandidatesFor(reqModel), true
+	}
+	model, providerName, qualified := s.qualifiedModel(reqModel)
+	if qualified {
+		if s.App.Mapping.IsCanonical(model) {
+			return s.App.CandidatesForProvider(model, providerName)
+		}
+		return s.App.CandidatesForNativeProvider(model, providerName)
+	}
+	return s.App.CandidatesForNative(reqModel)
+}
+
+func (s *Server) qualifiedModel(reqModel string) (model, providerName string, ok bool) {
+	for name := range s.App.Providers() {
+		suffix := ":" + name
+		if len(name) > len(providerName) && strings.HasSuffix(reqModel, suffix) {
+			model = strings.TrimSuffix(reqModel, suffix)
+			providerName = name
+		}
+	}
+	return model, providerName, model != "" && providerName != ""
 }
 
 // runChain 重试链主循环。

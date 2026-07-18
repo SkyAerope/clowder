@@ -362,6 +362,227 @@ func TestModelsEndpoint(t *testing.T) {
 	}
 }
 
+func setupQualifiedProviders(t *testing.T, mockURL, otherURL string) http.Handler {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("CLOWDER_HOME", home)
+
+	os.WriteFile(filepath.Join(home, "config.yaml"), []byte(`
+bind_addr: "127.0.0.1"
+port: 12100
+api_key: "test-key"
+providers_dir: "providers/"
+routing: { max_retries: 3, max_parallel_attempts: 2, upstream_streaming: true }
+backoff: { base_seconds: 1, max_seconds: 10 }
+capture: { max_records: 100, response_buffer_kb: 64 }
+pool: { min_active_keys: 1, max_total_keys: 5, auto_register: false, register_interval: 300 }
+dashboard: { public: true, admin: false, admin_key: "x" }
+`), 0o600)
+	os.WriteFile(filepath.Join(home, "models.yaml"), []byte(`
+shared-name:
+  - mock/canonical-native
+  - other/canonical-native
+  - shared-name
+  - configured-only-name
+`), 0o644)
+
+	for _, p := range []struct {
+		name, url, canonicalNative, directNative string
+	}{
+		{"mock", mockURL, "mock/canonical-native", "mock/direct-native"},
+		{"other", otherURL, "other/canonical-native", "other/direct-native"},
+	} {
+		dir := filepath.Join(home, "providers", p.name)
+		os.MkdirAll(dir, 0o755)
+		manifest := fmt.Sprintf(`
+name: %s
+display_name: %s
+base_url: %s
+enabled: true
+key_strategy: sticky
+model_whitelist:
+  - %s
+  - shared-name
+  - %s
+  - common-native
+`, p.name, p.name, p.url, p.canonicalNative, p.directNative)
+		os.WriteFile(filepath.Join(dir, "manifest.yaml"), []byte(manifest), 0o644)
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := app.New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, providerName := range []string{"mock", "other"} {
+		if _, _, err := a.ImportKeys(providerName, []string{providerName + "-key"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(a.Close)
+	mux := http.NewServeMux()
+	proxy.New(a).Routes(mux)
+	return mux
+}
+
+func modelUpstream(t *testing.T, calls *int32, models chan<- string, status int) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(calls, 1)
+		var payload struct {
+			Model string `json:"model"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Error(err)
+		}
+		models <- payload.Model
+		if status != http.StatusOK {
+			w.WriteHeader(status)
+			fmt.Fprint(w, `{"error":"upstream failure"}`)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, sseBody)
+	}))
+}
+
+func TestProviderQualifiedModels(t *testing.T) {
+	mockModels := make(chan string, 4)
+	otherModels := make(chan string, 4)
+	var mockCalls, otherCalls int32
+	mock := modelUpstream(t, &mockCalls, mockModels, http.StatusOK)
+	defer mock.Close()
+	other := modelUpstream(t, &otherCalls, otherModels, http.StatusOK)
+	defer other.Close()
+	h := setupQualifiedProviders(t, mock.URL, other.URL)
+
+	t.Run("canonical wins over same-named native", func(t *testing.T) {
+		w := chatReq(t, h, `{"model":"shared-name:mock","messages":[]}`)
+		if w.Code != http.StatusOK {
+			t.Fatalf("status %d: %s", w.Code, w.Body.String())
+		}
+		if got := <-mockModels; got != "mock/canonical-native" {
+			t.Fatalf("upstream model = %q", got)
+		}
+	})
+
+	t.Run("native selects provider exactly", func(t *testing.T) {
+		w := chatReq(t, h, `{"model":"other/direct-native:other","messages":[]}`)
+		if w.Code != http.StatusOK {
+			t.Fatalf("status %d: %s", w.Code, w.Body.String())
+		}
+		if got := <-otherModels; got != "other/direct-native" {
+			t.Fatalf("upstream model = %q", got)
+		}
+	})
+
+	t.Run("mapped native remains exact", func(t *testing.T) {
+		w := chatReq(t, h, `{"model":"other/canonical-native:other","messages":[]}`)
+		if w.Code != http.StatusOK {
+			t.Fatalf("status %d: %s", w.Code, w.Body.String())
+		}
+		if got := <-otherModels; got != "other/canonical-native" {
+			t.Fatalf("upstream model = %q", got)
+		}
+		var resp struct {
+			Model string `json:"model"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatal(err)
+		}
+		if resp.Model != "other/canonical-native:other" {
+			t.Fatalf("response model = %q", resp.Model)
+		}
+	})
+
+	if got := atomic.LoadInt32(&mockCalls); got != 1 {
+		t.Fatalf("mock calls = %d", got)
+	}
+	if got := atomic.LoadInt32(&otherCalls); got != 2 {
+		t.Fatalf("other calls = %d", got)
+	}
+}
+
+func TestProviderQualifiedModelNotFound(t *testing.T) {
+	mockModels := make(chan string, 4)
+	otherModels := make(chan string, 4)
+	var mockCalls, otherCalls int32
+	mock := modelUpstream(t, &mockCalls, mockModels, http.StatusOK)
+	defer mock.Close()
+	other := modelUpstream(t, &otherCalls, otherModels, http.StatusOK)
+	defer other.Close()
+	h := setupQualifiedProviders(t, mock.URL, other.URL)
+
+	for _, model := range []string{"shared-name:missing", "other/direct-native:mock", "configured-only-name"} {
+		w := chatReq(t, h, fmt.Sprintf(`{"model":%q,"messages":[]}`, model))
+		if w.Code != http.StatusNotFound {
+			t.Fatalf("model %q status %d: %s", model, w.Code, w.Body.String())
+		}
+	}
+	if got := atomic.LoadInt32(&mockCalls); got != 0 {
+		t.Fatalf("mock calls = %d", got)
+	}
+	if got := atomic.LoadInt32(&otherCalls); got != 0 {
+		t.Fatalf("other calls = %d", got)
+	}
+}
+
+func TestExactNativeRoutesAcrossProviders(t *testing.T) {
+	mockModels := make(chan string, 4)
+	otherModels := make(chan string, 4)
+	var mockCalls, otherCalls int32
+	mock := modelUpstream(t, &mockCalls, mockModels, http.StatusOK)
+	defer mock.Close()
+	other := modelUpstream(t, &otherCalls, otherModels, http.StatusOK)
+	defer other.Close()
+	h := setupQualifiedProviders(t, mock.URL, other.URL)
+
+	w := chatReq(t, h, `{"model":"common-native","messages":[]}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+	if calls := atomic.LoadInt32(&mockCalls) + atomic.LoadInt32(&otherCalls); calls != 1 {
+		t.Fatalf("upstream calls = %d", calls)
+	}
+	select {
+	case got := <-mockModels:
+		if got != "common-native" {
+			t.Fatalf("upstream model = %q", got)
+		}
+	case got := <-otherModels:
+		if got != "common-native" {
+			t.Fatalf("upstream model = %q", got)
+		}
+	default:
+		t.Fatal("no provider received native model")
+	}
+}
+
+func TestProviderQualifiedModelDoesNotFailOver(t *testing.T) {
+	mockModels := make(chan string, 4)
+	otherModels := make(chan string, 4)
+	var mockCalls, otherCalls int32
+	mock := modelUpstream(t, &mockCalls, mockModels, http.StatusInternalServerError)
+	defer mock.Close()
+	other := modelUpstream(t, &otherCalls, otherModels, http.StatusOK)
+	defer other.Close()
+	h := setupQualifiedProviders(t, mock.URL, other.URL)
+
+	w := chatReq(t, h, `{"model":"shared-name:mock","messages":[]}`)
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+	if got := atomic.LoadInt32(&mockCalls); got != 1 {
+		t.Fatalf("mock calls = %d", got)
+	}
+	if got := atomic.LoadInt32(&otherCalls); got != 0 {
+		t.Fatalf("other provider must not be called, got %d calls", got)
+	}
+}
+
 // TestClientDisconnectDuringRead 客户端在非流式读取阶段断开（ctx canceled）：
 // 上游回 200 后只发半个 body 并挂起，clowder 读取期间客户端断开 →
 // 应静默终结，不记 transport 错误、不重试、不进引擎，requests 表无任何记录。
