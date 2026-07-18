@@ -82,6 +82,18 @@ Key 来源由 manifest 中的脚本和数据库共同决定：有 `scripts.regis
 
 详细格式参见 `providers/` 目录下示例。
 
+## 模型请求
+
+`model` 支持 canonical 名或 provider 实际提供的原始模型名；两者重名时 canonical 优先。追加 `:provider` 可固定提供商：
+
+```text
+deepseek-chat
+deepseek-chat:openrouter
+deepseek/deepseek-chat:openrouter
+```
+
+指定 provider 后不会故障转移到其他 provider。`models.yaml` 仅用于上游模型归类，并支持 canonical 与上游原始模型名多对多关联。
+
 ## 项目结构
 
 ```

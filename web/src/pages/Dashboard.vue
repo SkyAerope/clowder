@@ -119,12 +119,13 @@ onUnmounted(() => clearInterval(timer))
       <div v-else-if="auto.length" class="flex flex-wrap gap-3">
         <div
           v-for="(c, i) in auto"
-          :key="c.provider + c.canonical"
+          :key="`${c.provider}|${c.canonical}|${c.native}`"
           class="ring-foreground/10 flex items-center gap-2 rounded-lg px-3 py-2 text-sm ring-1"
           :class="i === 0 && 'bg-primary/5 ring-primary/60'"
         >
           <Zap class="size-4" :class="i === 0 ? 'text-primary' : 'text-muted-foreground'" />
           <span class="font-medium">{{ c.canonical }}</span>
+          <span v-if="c.native !== c.canonical" class="text-muted-foreground">{{ c.native }}</span>
           <span class="text-muted-foreground">via {{ c.provider_display_name || c.provider }}</span>
           <Badge v-if="c.has_ttft" variant="secondary">{{ c.ttft_ms }}ms</Badge>
         </div>
