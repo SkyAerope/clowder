@@ -299,6 +299,26 @@ func TestModelsEndpoint(t *testing.T) {
 	}))
 	defer up.Close()
 	a, _ := setup(t, up.URL, []string{"k1"}, "")
+	disabledDir := filepath.Join(os.Getenv("CLOWDER_HOME"), "providers", "disabled")
+	if err := os.MkdirAll(disabledDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	disabledManifest := fmt.Sprintf(`
+name: disabled
+display_name: Disabled Provider
+base_url: %s
+enabled: false
+model_whitelist: [disabled-model]
+`, up.URL)
+	if err := os.WriteFile(filepath.Join(disabledDir, "manifest.yaml"), []byte(disabledManifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	if a.ConfiguredProvider("disabled") == nil || a.Provider("disabled") != nil {
+		t.Fatal("disabled provider must be configured but excluded from runtime routing")
+	}
 	h := server.New(a).Handler()
 
 	req := httptest.NewRequest("GET", "/v1/models", nil)
@@ -357,8 +377,34 @@ func TestModelsEndpoint(t *testing.T) {
 	if len(unmapped) != 1 || unmapped[0].Provider != "mock" || unmapped[0].Native != "mock/unmapped-model" {
 		t.Fatalf("unexpected unmapped models: %s", apiW.Body.String())
 	}
+	if _, exists := models["disabled-model"]; exists {
+		t.Fatal("disabled provider model must not be exposed")
+	}
 	if calls := atomic.LoadInt32(&upstreamModelCalls); calls != 0 {
 		t.Fatalf("model list endpoints made %d upstream model requests", calls)
+	}
+
+	providersReq := httptest.NewRequest("GET", "/api/providers", nil)
+	providersW := httptest.NewRecorder()
+	h.ServeHTTP(providersW, providersReq)
+	if providersW.Code != http.StatusOK {
+		t.Fatalf("GET /api/providers status %d: %s", providersW.Code, providersW.Body.String())
+	}
+	var providers []struct {
+		Name   string `json:"name"`
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(providersW.Body.Bytes(), &providers); err != nil {
+		t.Fatal(err)
+	}
+	foundDisabled := false
+	for _, provider := range providers {
+		if provider.Name == "disabled" {
+			foundDisabled = provider.Status == "disabled"
+		}
+	}
+	if !foundDisabled {
+		t.Fatalf("disabled provider missing from /api/providers: %s", providersW.Body.String())
 	}
 }
 

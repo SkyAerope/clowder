@@ -134,7 +134,7 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 			ModelCount  int    `json:"model_count"`
 		}
 		var out []pv
-		for name, ps := range a.Providers() {
+		for name, ps := range a.ConfiguredProviders() {
 			usable, total := a.Pool.UsableCount(name)
 			var ttftSum, ttftN int64
 			seenModels := map[string]bool{}
@@ -152,9 +152,13 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 			if ttftN > 0 {
 				avg = ttftSum / ttftN
 			}
+			status := "disabled"
+			if ps.Manifest.Enabled {
+				status = a.Health.Status(name, "")
+			}
 			out = append(out, pv{
 				Name: name, DisplayName: ps.Manifest.DisplayName,
-				Status: a.Health.Status(name, ""), ActiveKeys: usable, TotalKeys: total,
+				Status: status, ActiveKeys: usable, TotalKeys: total,
 				AvgTTFTMs: avg, Priority: ps.Manifest.Routing.Priority,
 				ModelCount: len(ps.Models),
 			})
@@ -342,7 +346,7 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 
 	mux.HandleFunc("GET /api/admin/providers/{name}", admin(func(w http.ResponseWriter, r *http.Request) {
 		name := r.PathValue("name")
-		ps := a.Provider(name)
+		ps := a.ConfiguredProvider(name)
 		if ps == nil {
 			jsonErr(w, http.StatusNotFound, "provider not found")
 			return
@@ -362,7 +366,7 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 
 	mux.HandleFunc("PUT /api/admin/providers/{name}/manifest", admin(func(w http.ResponseWriter, r *http.Request) {
 		name := r.PathValue("name")
-		ps := a.Provider(name)
+		ps := a.ConfiguredProvider(name)
 		if ps == nil {
 			jsonErr(w, http.StatusNotFound, "provider not found")
 			return

@@ -51,9 +51,10 @@ type App struct {
 	Mapping *models.Mapping
 	Engine  *rules.Engine
 
-	providers map[string]*ProviderState
-	scheduler *rules.Scheduler
-	actionsWG sync.WaitGroup
+	providers           map[string]*ProviderState
+	configuredProviders map[string]*ProviderState
+	scheduler           *rules.Scheduler
+	actionsWG           sync.WaitGroup
 
 	Log *slog.Logger
 }
@@ -72,11 +73,12 @@ func New(cfg *config.Config) (*App, error) {
 		return nil, err
 	}
 	a := &App{
-		Cfg:       cfg,
-		Store:     st,
-		Health:    health.New(),
-		providers: map[string]*ProviderState{},
-		Log:       slog.Default(),
+		Cfg:                 cfg,
+		Store:               st,
+		Health:              health.New(),
+		providers:           map[string]*ProviderState{},
+		configuredProviders: map[string]*ProviderState{},
+		Log:                 slog.Default(),
 	}
 	a.Runner = script.NewRunner(
 		time.Duration(cfg.Pool.RegisterBackoffBaseSeconds)*time.Second,
@@ -116,15 +118,13 @@ func (a *App) Reload() error {
 		a.Log.Warn("provider scan", "error", e)
 	}
 	states := map[string]*ProviderState{}
+	configuredStates := map[string]*ProviderState{}
 	var manifestRules []*rules.Rule
 	for _, m := range manifests {
-		if !m.Enabled {
-			continue
-		}
 		ps := &ProviderState{Manifest: m}
 		// 保留旧状态里的模型列表（reload 不丢已拉取数据）
 		a.mu.RLock()
-		if old, ok := a.providers[m.Name]; ok {
+		if old, ok := a.configuredProviders[m.Name]; ok {
 			ps.Models = old.Models
 			ps.ModelsFetchedAt = old.ModelsFetchedAt
 			ps.LastRegisterAt = old.LastRegisterAt
@@ -134,6 +134,10 @@ func (a *App) Reload() error {
 		a.mu.RUnlock()
 		if ps.Models == nil {
 			ps.Models = m.FilterModels(nil) // 冷启动先用白名单 fallback
+		}
+		configuredStates[m.Name] = ps
+		if !m.Enabled {
+			continue
 		}
 		states[m.Name] = ps
 		a.Pool.SetStrategy(m.Name, m.KeyStrategy)
@@ -173,6 +177,7 @@ func (a *App) Reload() error {
 	a.mu.Lock()
 	a.Mapping = mapping
 	a.providers = states
+	a.configuredProviders = configuredStates
 	a.Engine = engine
 	for _, ps := range states {
 		a.rebuildCanonicalLocked(ps)
@@ -212,12 +217,23 @@ func appendUniqueString(values []string, value string) []string {
 	return append(values, value)
 }
 
-// Providers 返回 provider 运行态快照。
+// Providers 返回已启用 provider 的运行态快照。
 func (a *App) Providers() map[string]*ProviderState {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	out := make(map[string]*ProviderState, len(a.providers))
-	for k, v := range a.providers {
+	return cloneProviderStates(a.providers)
+}
+
+// ConfiguredProviders 返回全部已配置 provider，包括已禁用项。
+func (a *App) ConfiguredProviders() map[string]*ProviderState {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return cloneProviderStates(a.configuredProviders)
+}
+
+func cloneProviderStates(states map[string]*ProviderState) map[string]*ProviderState {
+	out := make(map[string]*ProviderState, len(states))
+	for k, v := range states {
 		manifest := *v.Manifest
 		copyState := &ProviderState{
 			Manifest:             &manifest,
@@ -243,11 +259,18 @@ func (a *App) MappingSnapshot() *models.Mapping {
 	return a.Mapping.Clone()
 }
 
-// Provider 按名取 provider 状态。
+// Provider 按名取已启用 provider 状态。
 func (a *App) Provider(name string) *ProviderState {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return a.providers[name]
+}
+
+// ConfiguredProvider 按名取 provider 配置，包括已禁用项。
+func (a *App) ConfiguredProvider(name string) *ProviderState {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.configuredProviders[name]
 }
 
 // RefreshModels 实时拉取某 provider 的 /models 并应用黑白名单。
