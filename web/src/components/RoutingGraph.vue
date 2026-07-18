@@ -211,14 +211,20 @@ function short(s: string, max = 26) {
           rx="8"
           class="fill-[var(--color-muted)]"
         />
-        <text
+        <foreignObject
           :x="rightDotX + 16"
-          :y="rowY(i) + 4"
-          class="text-xs font-medium fill-[var(--color-foreground)]"
+          :y="rowY(i) - 14"
+          :width="sideW - 32"
+          height="28"
         >
-          {{ short(r.provider, 16) }}<tspan v-if="r.ttft" class="fill-[var(--color-muted-foreground)]"> · {{ r.ttft }}</tspan>
-          <title>{{ r.provider }}{{ r.ttft ? ' · ' + r.ttft : '' }}</title>
-        </text>
+          <div
+            class="flex h-full min-w-0 items-center text-xs font-medium text-foreground"
+            :title="r.provider + (r.ttft ? ' · ' + r.ttft : '')"
+          >
+            <span class="min-w-0 truncate">{{ r.provider }}</span>
+            <span v-if="r.ttft" class="shrink-0 text-muted-foreground"> · {{ r.ttft }}</span>
+          </div>
+        </foreignObject>
         <circle :cx="rightDotX" :cy="rowY(i)" r="3.5" class="fill-[var(--color-primary)]" />
       </g>
     </svg>
