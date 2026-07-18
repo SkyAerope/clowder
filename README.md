@@ -78,10 +78,7 @@ clowder serve                    前台运行（start 的实际工作进程）
 
 Provider 定义在 `providers/` 目录下，每个 provider 一个子目录，包含 `manifest.yaml`。
 
-支持两种类型：
-
-- **script** — 通过注册脚本自动获取 key（如 featherless）
-- **static** — 手动维护 key 列表（如 OpenRouter）
+Key 来源由 manifest 中的脚本和数据库共同决定：有 `scripts.register` 时支持注册脚本；手动 key 通过 `clowder import <provider> <file>` 或管理后台添加，均写入数据库。运行时不会自动读取 provider 目录下的 `keys.txt`。
 
 详细格式参见 `providers/` 目录下示例。
 

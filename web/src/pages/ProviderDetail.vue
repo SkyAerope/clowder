@@ -45,6 +45,9 @@ interface Detail {
 
 const detail = ref<Detail | null>(null)
 const registering = ref(false)
+const importing = ref(false)
+const importOpen = ref(false)
+const importKeys = ref('')
 const refreshing = ref(false)
 const checking = ref(false)
 // { id: { loading, result: 'success'|'error'|null, checkStatus, metadata } }
@@ -74,6 +77,23 @@ async function register() {
     toast.error(`注册失败: ${e.message}`)
   } finally {
     registering.value = false
+  }
+}
+
+async function importKeysToDatabase() {
+  importing.value = true
+  try {
+    const result = await api.post<{ added: number; skipped: number }>(`/api/admin/providers/${name}/keys`, {
+      keys: importKeys.value,
+    })
+    importOpen.value = false
+    importKeys.value = ''
+    toast.success(`已导入 ${result.added} 个 key，跳过 ${result.skipped} 个`)
+    await load()
+  } catch (e: any) {
+    toast.error(`导入失败: ${e.message}`)
+  } finally {
+    importing.value = false
   }
 }
 
@@ -149,8 +169,8 @@ interface MForm {
   base_url: string
   enabled: boolean
   format: string
-  key_source: string
   key_strategy: string
+  default_check_model: string
   whitelist: string
   blacklist: string
   register: string
@@ -172,7 +192,7 @@ let mSyncing = false
 
 const mForm = reactive<MForm>({
   display_name: '', description: '', base_url: '', enabled: true, format: 'openai-compatible',
-  key_source: 'static', key_strategy: 'sticky', whitelist: '', blacklist: '',
+  key_strategy: 'sticky', default_check_model: '', whitelist: '', blacklist: '',
   register: '', check: '', register_timeout: 300, check_timeout: 60,
   priority: 100, weight: 1, hedge: false,
 })
@@ -198,8 +218,8 @@ function parseManifest(text: string) {
   mForm.base_url = doc.base_url ?? ''
   mForm.enabled = doc.enabled ?? true
   mForm.format = doc.format ?? 'openai-compatible'
-  mForm.key_source = doc.key_source ?? 'static'
   mForm.key_strategy = doc.key_strategy ?? 'sticky'
+  mForm.default_check_model = doc.default_check_model ?? ''
   mForm.whitelist = listText(doc.model_whitelist)
   mForm.blacklist = listText(doc.model_blacklist)
   mForm.register = sc.register ?? ''
@@ -222,8 +242,8 @@ function serializeManifest(): string {
   obj.base_url = mForm.base_url
   obj.enabled = mForm.enabled
   setOrDel('format', mForm.format, !mForm.format)
-  obj.key_source = mForm.key_source
   obj.key_strategy = mForm.key_strategy
+  setOrDel('default_check_model', mForm.default_check_model, !mForm.default_check_model)
   setOrDel('model_whitelist', splitList(mForm.whitelist), !mForm.whitelist.trim())
   setOrDel('model_blacklist', splitList(mForm.blacklist), !mForm.blacklist.trim())
   const sc: Record<string, any> = { ...(mRaw.scripts ?? {}) }
@@ -307,8 +327,11 @@ onMounted(load)
         <Button variant="outline" size="sm" @click="openManifest">
           <FileCog class="size-4" /> 修改 manifest
         </Button>
-        <Button v-if="detail.manifest.key_source === 'script'" size="sm" :disabled="registering" @click="register">
+        <Button v-if="detail.manifest.has_register" size="sm" :disabled="registering" @click="register">
           <Plus class="size-4" :class="registering && 'animate-pulse'" /> 注册新 Key
+        </Button>
+        <Button variant="outline" size="sm" @click="importOpen = true">
+          <Plus class="size-4" /> 添加 Key
         </Button>
       </div>
     </div>
@@ -317,21 +340,26 @@ onMounted(load)
       <Card title="Manifest">
         <dl class="grid grid-cols-2 gap-y-2 text-sm">
           <dt class="text-muted-foreground">base_url</dt><dd class="font-mono text-xs break-all">{{ detail.manifest.base_url }}</dd>
-          <dt class="text-muted-foreground">key_source</dt><dd>{{ detail.manifest.key_source }}</dd>
           <dt class="text-muted-foreground">key_strategy</dt><dd>{{ detail.manifest.key_strategy }}</dd>
           <dt class="text-muted-foreground">priority / weight</dt><dd>{{ detail.manifest.priority }} / {{ detail.manifest.weight }}</dd>
           <dt class="text-muted-foreground">enabled</dt><dd>{{ detail.manifest.enabled }}</dd>
+          <dt class="text-muted-foreground">注册脚本</dt><dd>{{ detail.manifest.has_register ? '有' : '无' }}</dd>
           <dt class="text-muted-foreground">check 脚本</dt><dd>{{ detail.manifest.has_check ? '有' : '无' }}</dd>
+          <template v-if="!detail.manifest.has_check">
+            <dt class="text-muted-foreground">默认测试模型</dt>
+            <dd class="font-mono text-xs break-all">{{ detail.manifest.default_check_model || '（未设置，check 时随机选 healthy 模型）' }}</dd>
+          </template>
         </dl>
       </Card>
 
       <Card title="注册状态">
-        <dl class="grid grid-cols-2 gap-y-2 text-sm">
+        <dl v-if="detail.manifest.has_register" class="grid grid-cols-2 gap-y-2 text-sm">
           <dt class="text-muted-foreground">上次注册</dt><dd>{{ fmtTime(detail.last_register_at) }}</dd>
           <dt class="text-muted-foreground">耗时</dt><dd>{{ detail.last_register_duration > 0 ? detail.last_register_duration + 'ms' : '—' }}</dd>
           <dt class="text-muted-foreground">上次错误</dt>
           <dd :class="detail.last_register_error && 'text-destructive'">{{ detail.last_register_error || '无' }}</dd>
         </dl>
+        <p v-else class="text-sm text-muted-foreground">无注册脚本</p>
       </Card>
     </div>
 
@@ -459,6 +487,22 @@ onMounted(load)
       </div>
     </Card>
 
+    <Dialog v-model:open="importOpen">
+      <DialogContent class="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>添加 Key</DialogTitle>
+          <DialogDescription>每行输入一个 key，保存后直接写入数据库。</DialogDescription>
+        </DialogHeader>
+        <Textarea v-model="importKeys" :rows="10" class="font-mono text-xs" placeholder="key-one\nkey-two" spellcheck="false" />
+        <DialogFooter>
+          <Button variant="outline" @click="importOpen = false">取消</Button>
+          <Button :disabled="importing || !importKeys.trim()" @click="importKeysToDatabase">
+            <Save class="size-4" /> 保存
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
     <!-- manifest 编辑器 -->
     <Dialog v-model:open="manifestOpen">
       <DialogContent class="sm:max-w-2xl">
@@ -496,16 +540,6 @@ onMounted(load)
                 <Input v-model="mForm.base_url" class="font-mono" />
               </div>
               <div class="space-y-1">
-                <Label class="text-xs text-muted-foreground">Key 来源 (key_source)</Label>
-                <Select v-model="mForm.key_source">
-                  <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="static">static</SelectItem>
-                    <SelectItem value="script">script</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div class="space-y-1">
                 <Label class="text-xs text-muted-foreground">Key 策略 (key_strategy)</Label>
                 <Select v-model="mForm.key_strategy">
                   <SelectTrigger class="w-full"><SelectValue /></SelectTrigger>
@@ -514,6 +548,18 @@ onMounted(load)
                     <SelectItem value="round-robin">round-robin</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div class="col-span-2 space-y-1">
+                <Label class="text-xs text-muted-foreground">
+                  默认测试模型 (default_check_model)
+                  <span v-if="mForm.check" class="text-destructive">· check 脚本存在时不生效</span>
+                </Label>
+                <Input
+                  v-model="mForm.default_check_model"
+                  class="font-mono"
+                  :disabled="!!mForm.check"
+                  placeholder="留空时 check 随机选 healthy 模型"
+                />
               </div>
               <div class="col-span-2 flex items-center justify-between">
                 <Label class="text-xs text-muted-foreground">启用 (enabled)</Label>
