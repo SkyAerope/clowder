@@ -75,10 +75,6 @@ func (a *App) runAction(act rules.Action, actx *ActionContext) error {
 		}
 	case "mark_provider_unhealthy":
 		a.Health.MarkProviderDown(actx.Provider)
-	case "refresh_models":
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		return a.RefreshModels(ctx, actx.Provider)
 	case "check_key":
 		if actx.KeyID == 0 {
 			return nil

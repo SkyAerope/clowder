@@ -106,11 +106,10 @@ const PresetRulesYAML = `rules:
       - mark_key: rate_limited
 
   - name: preset-404-model-gone
-    description: "404 标记模型不健康并刷新模型列表"
+    description: "404 标记模型不健康"
     when: { status_code: 404 }
     do:
       - mark_model_unhealthy: {}
-      - refresh_models: {}
     route: next_provider
 
   - name: default-4xx-passthrough

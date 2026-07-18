@@ -97,7 +97,7 @@ type Condition struct {
 // Action 是 do 里的一个副作用动作（单键）。
 type Action struct {
 	Kind string // mark_key | mark_model_unhealthy | mark_provider_unhealthy |
-	//             refresh_models | check_key | check_keys | capture | backoff_key
+	//             check_key | check_keys | capture | backoff_key
 	MarkStatus string   // mark_key 的目标状态
 	Chain      bool     // check_key / check_keys
 	Fields     []string // capture 字段裁剪；空 = 全抓
@@ -342,7 +342,7 @@ func parseAction(m map[string]any) (Action, error) {
 			default:
 				return a, fmt.Errorf("mark_key: invalid status %q", st)
 			}
-		case "mark_model_unhealthy", "mark_provider_unhealthy", "refresh_models", "backoff_key":
+		case "mark_model_unhealthy", "mark_provider_unhealthy", "backoff_key":
 			// 无参数（值应为 {} 或 nil）
 		case "check_key", "check_keys":
 			if cm, ok := v.(map[string]any); ok {
