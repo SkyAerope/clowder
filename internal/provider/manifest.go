@@ -1,4 +1,4 @@
-// Package provider 负责 providers/ 目录扫描、manifest.yaml 解析与模型黑白名单过滤。
+// Package provider 负责 providers/ 目录扫描与 manifest.yaml 解析。
 package provider
 
 import (
@@ -30,8 +30,7 @@ type Manifest struct {
 	// 当 scripts.check 非空时本字段不生效。
 	DefaultCheckModel string `yaml:"default_check_model"`
 
-	ModelWhitelist []string `yaml:"model_whitelist"`
-	ModelBlacklist []string `yaml:"model_blacklist"`
+	Models []string `yaml:"models"`
 
 	Scripts ScriptsConfig `yaml:"scripts"`
 	Routing RoutingPref   `yaml:"routing"`
@@ -90,6 +89,7 @@ func LoadManifest(dir string) (*Manifest, error) {
 	if m.Routing.Weight <= 0 {
 		m.Routing.Weight = 1
 	}
+	m.Models = uniqueNonEmpty(m.Models)
 	if err := m.validate(); err != nil {
 		return nil, err
 	}
@@ -106,32 +106,6 @@ func (m *Manifest) validate() error {
 		return fmt.Errorf("provider %s: invalid key_strategy %q", m.Name, m.KeyStrategy)
 	}
 	return nil
-}
-
-// FilterModels 对实时拉取的模型列表应用黑白名单。
-// 白名单优先于黑名单：同时命中两者保留。
-// fetched 为 nil（拉取失败）时 fallback 到白名单；无白名单返回空。
-func (m *Manifest) FilterModels(fetched []string) []string {
-	if fetched == nil {
-		// fallback：白名单即模型列表
-		return append([]string(nil), m.ModelWhitelist...)
-	}
-	white := toSet(m.ModelWhitelist)
-	black := toSet(m.ModelBlacklist)
-	var out []string
-	for _, mm := range fetched {
-		if len(white) > 0 {
-			if white[mm] {
-				out = append(out, mm) // 白名单命中即保留（优先于黑名单）
-			}
-			continue
-		}
-		if black[mm] {
-			continue
-		}
-		out = append(out, mm)
-	}
-	return out
 }
 
 // ScanDir 扫描 providers/ 目录，加载所有含 manifest.yaml 的子目录。
@@ -159,10 +133,15 @@ func ScanDir(dir string) (providers []*Manifest, errs []error) {
 	return providers, errs
 }
 
-func toSet(ss []string) map[string]bool {
-	m := make(map[string]bool, len(ss))
-	for _, s := range ss {
-		m[s] = true
+func uniqueNonEmpty(values []string) []string {
+	seen := make(map[string]bool, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
 	}
-	return m
+	return out
 }

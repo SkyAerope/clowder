@@ -27,12 +27,10 @@ import (
 // ProviderState 是 provider 的运行态（manifest + 过滤后的模型列表 + 映射）。
 type ProviderState struct {
 	Manifest *provider.Manifest
-	// Models 黑白名单过滤后的 native 模型名
+	// Models manifest 中声明的 native 模型名
 	Models []string
 	// NativesByCanonical canonical → natives（本 provider 视角）
 	NativesByCanonical map[string][]string
-	// ModelsFetchedAt 上次成功拉取 /models 的时间（零值 = 未拉到，用的白名单 fallback）
-	ModelsFetchedAt time.Time
 	// 注册机状态
 	LastRegisterAt       time.Time
 	LastRegisterDuration time.Duration
@@ -122,19 +120,15 @@ func (a *App) Reload() error {
 	var manifestRules []*rules.Rule
 	for _, m := range manifests {
 		ps := &ProviderState{Manifest: m}
-		// 保留旧状态里的模型列表（reload 不丢已拉取数据）
+		ps.Models = append([]string(nil), m.Models...)
+		// 保留注册机运行状态。
 		a.mu.RLock()
 		if old, ok := a.configuredProviders[m.Name]; ok {
-			ps.Models = old.Models
-			ps.ModelsFetchedAt = old.ModelsFetchedAt
 			ps.LastRegisterAt = old.LastRegisterAt
 			ps.LastRegisterDuration = old.LastRegisterDuration
 			ps.LastRegisterError = old.LastRegisterError
 		}
 		a.mu.RUnlock()
-		if ps.Models == nil {
-			ps.Models = m.FilterModels(nil) // 冷启动先用白名单 fallback
-		}
 		configuredStates[m.Name] = ps
 		if !m.Enabled {
 			continue
@@ -239,7 +233,6 @@ func cloneProviderStates(states map[string]*ProviderState) map[string]*ProviderS
 			Manifest:             &manifest,
 			Models:               append([]string(nil), v.Models...),
 			NativesByCanonical:   map[string][]string{},
-			ModelsFetchedAt:      v.ModelsFetchedAt,
 			LastRegisterAt:       v.LastRegisterAt,
 			LastRegisterDuration: v.LastRegisterDuration,
 			LastRegisterError:    v.LastRegisterError,
@@ -273,33 +266,13 @@ func (a *App) ConfiguredProvider(name string) *ProviderState {
 	return a.configuredProviders[name]
 }
 
-// RefreshModels 实时拉取某 provider 的 /models 并应用黑白名单。
-func (a *App) RefreshModels(ctx context.Context, name string) error {
-	ps := a.Provider(name)
+// DiscoverModels 从 provider 拉取可选模型，不修改运行时或 manifest 配置。
+func (a *App) DiscoverModels(ctx context.Context, name string) ([]string, error) {
+	ps := a.ConfiguredProvider(name)
 	if ps == nil {
-		return fmt.Errorf("provider %s not found", name)
+		return nil, fmt.Errorf("provider %s not found", name)
 	}
-	fetched, err := fetchModelList(ctx, ps.Manifest.BaseURL, a.firstKey(name))
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if err != nil {
-		a.Log.Warn("fetch models failed, fallback to whitelist", "provider", name, "error", err)
-		ps.Models = ps.Manifest.FilterModels(nil)
-	} else {
-		ps.Models = ps.Manifest.FilterModels(fetched)
-		ps.ModelsFetchedAt = time.Now()
-	}
-	a.rebuildCanonicalLocked(ps)
-	return err
-}
-
-// RefreshAllModels 启动时 / 定期刷新所有 provider 模型列表。
-func (a *App) RefreshAllModels(ctx context.Context) {
-	for name := range a.Providers() {
-		if err := a.RefreshModels(ctx, name); err != nil {
-			a.Log.Warn("refresh models", "provider", name, "error", err)
-		}
-	}
+	return fetchModelList(ctx, ps.Manifest.BaseURL, a.firstKey(name))
 }
 
 // firstKey 取该 provider 任一可用 key 用于拉模型列表（无 key 返回空 = 匿名请求）。

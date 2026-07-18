@@ -51,7 +51,7 @@ display_name: Mock
 base_url: %s
 enabled: true
 key_strategy: sticky
-model_whitelist:
+models:
   - mock/test-model-v1
   - mock/unmapped-model
 `, upstreamURL)
@@ -308,7 +308,7 @@ name: disabled
 display_name: Disabled Provider
 base_url: %s
 enabled: false
-model_whitelist: [disabled-model]
+models: [disabled-model]
 `, up.URL)
 	if err := os.WriteFile(filepath.Join(disabledDir, "manifest.yaml"), []byte(disabledManifest), 0o644); err != nil {
 		t.Fatal(err)
@@ -447,7 +447,7 @@ display_name: %s
 base_url: %s
 enabled: true
 key_strategy: sticky
-model_whitelist:
+models:
   - %s
   - shared-name
   - %s
