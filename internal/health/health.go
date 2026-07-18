@@ -38,7 +38,7 @@ type entry struct {
 	ttftN     int64
 }
 
-// Tracker 管理所有 (provider, model) 与 provider 级（model=""）的健康状态。
+// Tracker 管理所有 (provider, native) 与 provider 级（native=""）的健康状态。
 type Tracker struct {
 	mu sync.Mutex
 	m  map[[2]string]*entry
@@ -74,7 +74,7 @@ func (t *Tracker) Status(provider, model string) string {
 	return t.get(provider, model).resolve(time.Now())
 }
 
-// Routable 该 (provider, model) 是否参与路由：provider 级与 model 级都得是 healthy / probing。
+// Routable 该 (provider, native) 是否参与路由：provider 与 native 都需可用。
 func (t *Tracker) Routable(provider, model string) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -90,7 +90,7 @@ func (t *Tracker) MarkConnFailure(provider string) {
 	t.markFailure(provider, "", connFailDuration)
 }
 
-// MarkModelDown model 级故障（404 / 全 key 失败）。
+// MarkModelDown 标记 provider 下的原生模型故障。
 func (t *Tracker) MarkModelDown(provider, model string) {
 	t.markFailure(provider, model, allKeysFailDuration)
 }
@@ -147,7 +147,7 @@ func (t *Tracker) MarkSuccess(provider, model string, ttftMs int64) {
 	}
 }
 
-// AvgTTFT 返回 (provider, model) 的平均 TTFT；无数据返回 (0, false)。
+// AvgTTFT 返回 (provider, native) 的平均 TTFT；无数据返回 (0, false)。
 func (t *Tracker) AvgTTFT(provider, model string) (int64, bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
