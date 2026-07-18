@@ -5,6 +5,7 @@ package pool
 
 import (
 	"fmt"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -73,19 +74,7 @@ func (p *Pool) AddKey(k *store.Key) error {
 	return nil
 }
 
-// usable 判断 key 当前是否可用（invalid 永久排除；rate_limited 看到期时间）。
-func usable(k *store.Key, now time.Time) bool {
-	switch k.Status {
-	case store.KeyInvalid:
-		return false
-	case store.KeyRateLimited:
-		return k.RateLimitUntil != nil && now.After(*k.RateLimitUntil)
-	default:
-		return true
-	}
-}
-
-// Pick 按策略选一个可用 key；exclude 为本链已用过的 key id（换 key 时跳过）。
+// Pick 只选择 active key；没有 active 时，从 idle key 中随机晋升一个。
 func (p *Pool) Pick(provider string, exclude map[int64]bool) (*store.Key, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -93,34 +82,61 @@ func (p *Pool) Pick(provider string, exclude map[int64]bool) (*store.Key, error)
 	if !ok || len(pk.keys) == 0 {
 		return nil, fmt.Errorf("no keys for provider %s", provider)
 	}
-	now := time.Now()
-	n := len(pk.keys)
-	switch pk.strategy {
-	case "round-robin":
-		for i := 0; i < n; i++ {
-			k := pk.keys[(pk.cursor+i)%n]
-			if usable(k, now) && !exclude[k.ID] {
-				pk.cursor = (pk.cursor + i + 1) % n
-				return k, nil
-			}
+	active := make([]*store.Key, 0, len(pk.keys))
+	idle := make([]*store.Key, 0, len(pk.keys))
+	for _, k := range pk.keys {
+		if exclude[k.ID] {
+			continue
 		}
-	default: // sticky：固定从 cursor 开始（用完才换），退避中临时跳后面的 key
-		for i := 0; i < n; i++ {
-			k := pk.keys[(pk.cursor+i)%n]
-			if usable(k, now) && !exclude[k.ID] {
-				// 不推进 cursor：退避结束后指针回到原 key
-				return k, nil
-			}
+		switch k.Status {
+		case store.KeyActive:
+			active = append(active, k)
+		case store.KeyIdle:
+			idle = append(idle, k)
 		}
 	}
-	return nil, fmt.Errorf("no usable key for provider %s", provider)
+	if len(active) == 0 && len(idle) > 0 {
+		active = append(active, idle[rand.Intn(len(idle))])
+	}
+	if len(active) == 0 {
+		return nil, fmt.Errorf("no active keys for provider %s", provider)
+	}
+	selected := active[rand.Intn(len(active))]
+	if err := p.setActiveLocked(pk, selected); err != nil {
+		return nil, err
+	}
+	return selected, nil
+}
+
+func (p *Pool) setActiveLocked(pk *providerKeys, selected *store.Key) error {
+	for _, k := range pk.keys {
+		if k == selected {
+			if k.Status == store.KeyActive {
+				continue
+			}
+			k.Status = store.KeyActive
+			k.RateLimitUntil = nil
+			if err := p.st.UpdateKeyStatus(k.ID, store.KeyActive, nil, k.RateLimitCount); err != nil {
+				return err
+			}
+			continue
+		}
+		if k.Status != store.KeyActive {
+			continue
+		}
+		k.Status = store.KeyIdle
+		if err := p.st.UpdateKeyStatus(k.ID, store.KeyIdle, nil, k.RateLimitCount); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // MarkInvalid 永久禁用 key；sticky 下若是 current key，singleflight 推进指针。
 func (p *Pool) MarkInvalid(keyID int64) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	k, pk := p.find(keyID)
+	k, _ := p.find(keyID)
 	if k == nil {
 		return fmt.Errorf("key %d not found", keyID)
 	}
@@ -131,31 +147,7 @@ func (p *Pool) MarkInvalid(keyID int64) error {
 	if err := p.st.UpdateKeyStatus(keyID, store.KeyInvalid, nil, k.RateLimitCount); err != nil {
 		return err
 	}
-	// sticky：current 被烧掉 → 指针推进到下一个可用 key
-	if pk.strategy != "round-robin" && pk.keys[pk.cursor%len(pk.keys)].ID == keyID {
-		p.advanceLocked(pk)
-	}
 	return nil
-}
-
-// advanceLocked 推进 sticky 指针到下一个可用 key（调用方持锁）。
-// 推进后的新 cursor key 即为 active：上一个请求成功 & 下一个请求将尝试的 key。
-func (p *Pool) advanceLocked(pk *providerKeys) {
-	now := time.Now()
-	n := len(pk.keys)
-	for i := 1; i <= n; i++ {
-		idx := (pk.cursor + i) % n
-		if usable(pk.keys[idx], now) {
-			pk.cursor = idx
-			k := pk.keys[idx]
-			if k.Status != store.KeyActive {
-				k.Status = store.KeyActive
-				k.RateLimitUntil = nil
-				_ = p.st.UpdateKeyStatus(k.ID, store.KeyActive, nil, k.RateLimitCount)
-			}
-			return
-		}
-	}
 }
 
 // MarkRateLimited 临时退避至 until（不推进 sticky 指针——退避结束回原 key）。
@@ -176,13 +168,51 @@ func (p *Pool) MarkRateLimited(keyID int64, until time.Time, count int) error {
 func (p *Pool) MarkActive(keyID int64) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	k, _ := p.find(keyID)
+	k, pk := p.find(keyID)
 	if k == nil {
 		return fmt.Errorf("key %d not found", keyID)
 	}
-	k.Status = store.KeyActive
+	return p.setActiveLocked(pk, k)
+}
+
+// SetStatus 手动设置 key 状态。
+func (p *Pool) SetStatus(keyID int64, status string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	k, pk := p.find(keyID)
+	if k == nil {
+		return fmt.Errorf("key %d not found", keyID)
+	}
+	if status == store.KeyActive {
+		return p.setActiveLocked(pk, k)
+	}
+	k.Status = status
 	k.RateLimitUntil = nil
-	return p.st.UpdateKeyStatus(keyID, store.KeyActive, nil, k.RateLimitCount)
+	return p.st.UpdateKeyStatus(keyID, status, nil, k.RateLimitCount)
+}
+
+// DeleteKey 从持久化存储和内存池中删除 key。
+func (p *Pool) DeleteKey(keyID int64) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for provider, pk := range p.byPro {
+		for i, k := range pk.keys {
+			if k.ID != keyID {
+				continue
+			}
+			if err := p.st.DeleteKey(keyID); err != nil {
+				return err
+			}
+			pk.keys = append(pk.keys[:i], pk.keys[i+1:]...)
+			if len(pk.keys) == 0 {
+				delete(p.byPro, provider)
+			} else if pk.cursor >= len(pk.keys) {
+				pk.cursor = 0
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("key %d not found", keyID)
 }
 
 // BackoffKey 实现 backoff_key 动作：
@@ -213,16 +243,19 @@ func (p *Pool) BackoffKey(keyID int64) error {
 // OnSuccess 请求成功：清零退避计数、恢复 active、记录使用时间。
 func (p *Pool) OnSuccess(keyID int64) {
 	p.mu.Lock()
-	k, _ := p.find(keyID)
+	k, pk := p.find(keyID)
 	if k != nil {
 		k.RateLimitCount = 0
 		k.RateLimitUntil = nil
 		if k.Status != store.KeyInvalid {
 			k.Status = store.KeyActive
 		}
+		if k.Status == store.KeyActive {
+			_ = p.setActiveLocked(pk, k)
+		}
 	}
 	p.mu.Unlock()
-	if k != nil {
+	if k != nil && k.Status != store.KeyInvalid {
 		p.st.ResetKeyBackoff(keyID)
 		p.st.UpdateKeyStatus(keyID, store.KeyActive, nil, 0)
 		p.st.TouchKey(keyID)
@@ -237,9 +270,8 @@ func (p *Pool) UsableCount(provider string) (usableN, total int) {
 	if !ok {
 		return 0, 0
 	}
-	now := time.Now()
 	for _, k := range pk.keys {
-		if usable(k, now) {
+		if k.Status == store.KeyActive || k.Status == store.KeyIdle {
 			usableN++
 		}
 	}

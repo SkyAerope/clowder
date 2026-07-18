@@ -108,6 +108,12 @@ func (s *Store) UpdateKeyStatus(id int64, status string, until *time.Time, count
 	return err
 }
 
+// DeleteKey 永久删除 key。
+func (s *Store) DeleteKey(id int64) error {
+	_, err := s.db.Exec(`DELETE FROM keys WHERE id=?`, id)
+	return err
+}
+
 // ResetKeyBackoff 请求成功后清零退避计数。
 func (s *Store) ResetKeyBackoff(id int64) error {
 	_, err := s.db.Exec(`UPDATE keys SET rate_limit_count=0, rate_limit_until=NULL WHERE id=?`, id)
