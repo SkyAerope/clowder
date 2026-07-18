@@ -20,6 +20,10 @@ interface Row {
   groupSpan: number
 }
 
+function emphasized(r: Row) {
+  return r.best || !r.canonical
+}
+
 const canonicals = computed(() =>
   Object.keys(props.models).sort((a, b) => {
     if (!a) return 1
@@ -138,8 +142,8 @@ function short(s: string, max = 26) {
         <path
           :d="curve(midRightX, rowY(i), rightDotX, rowY(i))"
           fill="none"
-          :stroke="strokeOf(r.healthy, r.best)"
-          :stroke-width="r.best ? 2.5 : 1.5"
+          :stroke="strokeOf(r.healthy, emphasized(r))"
+          :stroke-width="emphasized(r) ? 2.5 : 1.5"
           :stroke-dasharray="r.healthy ? undefined : '4 4'"
           :opacity="hovered && hovered !== r.id ? 0.18 : 1"
           class="transition-opacity"
@@ -183,8 +187,8 @@ function short(s: string, max = 26) {
           height="28"
           rx="8"
           fill="var(--color-card)"
-          :stroke="strokeOf(r.healthy, r.best)"
-          :stroke-width="r.best ? 1.5 : 1"
+          :stroke="strokeOf(r.healthy, emphasized(r))"
+          :stroke-width="emphasized(r) ? 1.5 : 1"
         />
         <text
           :x="midX"
