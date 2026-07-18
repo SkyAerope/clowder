@@ -66,7 +66,7 @@ const navItems = [
               </template>
               <Separator class="my-2" />
               <button v-if="session.admin"
-                class="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted transition-colors"
+                class="flex cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted transition-colors"
                 @click="logout(); mobileOpen = false">
                 <LogOut class="size-4" /> 退出管理
               </button>

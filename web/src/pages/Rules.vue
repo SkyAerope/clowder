@@ -573,7 +573,7 @@ onBeforeRouteLeave(() => {
         <!-- 可编辑规则卡片 -->
         <div v-for="(e, ri) in draft" :key="e._uid" class="border-border bg-card overflow-hidden rounded-xl border" :class="{ 'opacity-60': !e.enabled }">
           <div class="flex items-start gap-2 p-3">
-            <button type="button" class="flex min-w-0 flex-1 items-start gap-2 text-left" @click="toggleOpen(e._uid)">
+            <button type="button" class="flex min-w-0 flex-1 cursor-pointer items-start gap-2 text-left" @click="toggleOpen(e._uid)">
               <component :is="expanded.has(e._uid) ? ChevronDown : ChevronRight" class="text-muted-foreground mt-0.5 size-4 shrink-0" />
               <div class="min-w-0 flex-1 space-y-1">
                 <div class="flex items-center gap-2">
@@ -650,7 +650,7 @@ onBeforeRouteLeave(() => {
                   <Trash2 class="size-4" />
                 </Button>
               </div>
-              <button type="button" class="text-muted-foreground hover:text-foreground hover:border-foreground/30 flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-foreground/20 py-1.5 text-xs" @click="addWhenClause(e)">
+              <button type="button" class="text-muted-foreground hover:text-foreground hover:border-foreground/30 flex w-full cursor-pointer items-center justify-center gap-1 rounded-lg border border-dashed border-foreground/20 py-1.5 text-xs" @click="addWhenClause(e)">
                 <Plus class="size-3" /> 加条件
               </button>
             </div>
@@ -700,7 +700,7 @@ onBeforeRouteLeave(() => {
                   <Trash2 class="size-4" />
                 </Button>
               </div>
-              <button type="button" class="text-muted-foreground hover:text-foreground hover:border-foreground/30 flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-foreground/20 py-1.5 text-xs" @click="addCond(e)">
+              <button type="button" class="text-muted-foreground hover:text-foreground hover:border-foreground/30 flex w-full cursor-pointer items-center justify-center gap-1 rounded-lg border border-dashed border-foreground/20 py-1.5 text-xs" @click="addCond(e)">
                 <Plus class="size-3" /> 加条件
               </button>
             </div>
@@ -727,7 +727,7 @@ onBeforeRouteLeave(() => {
                 </div>
                 <DropdownMenu v-else-if="a.kind === 'capture'">
                   <DropdownMenuTrigger as-child>
-                    <button type="button" class="border-input dark:bg-input/30 flex min-h-8 max-w-full flex-1 items-center gap-1 overflow-hidden rounded-lg border bg-transparent px-2.5 py-1 text-sm outline-none">
+                    <button type="button" class="border-input dark:bg-input/30 flex min-h-8 max-w-full flex-1 cursor-pointer items-center gap-1 overflow-hidden rounded-lg border bg-transparent px-2.5 py-1 text-sm outline-none">
                       <span class="flex flex-1 flex-wrap items-center gap-1">
                         <Badge v-for="f in a.fields" :key="f" variant="secondary" class="h-5 shrink-0">{{ CAPTURE_LABELS[f] ?? f }}</Badge>
                         <span v-if="!a.fields.length" class="text-muted-foreground">全抓（点击多选）</span>
@@ -750,7 +750,7 @@ onBeforeRouteLeave(() => {
                   <Trash2 class="size-4" />
                 </Button>
               </div>
-              <button type="button" class="text-muted-foreground hover:text-foreground hover:border-foreground/30 flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-foreground/20 py-1.5 text-xs" @click="addAction(e)">
+              <button type="button" class="text-muted-foreground hover:text-foreground hover:border-foreground/30 flex w-full cursor-pointer items-center justify-center gap-1 rounded-lg border border-dashed border-foreground/20 py-1.5 text-xs" @click="addAction(e)">
                 <Plus class="size-3" /> 加动作
               </button>
             </div>
@@ -774,7 +774,7 @@ onBeforeRouteLeave(() => {
                 </Select>
                 <DropdownMenu v-else>
                   <DropdownMenuTrigger as-child>
-                    <button type="button" class="border-input dark:bg-input/30 flex min-h-8 max-w-full flex-1 items-center gap-1 overflow-hidden rounded-lg border bg-transparent px-2.5 py-1 text-sm outline-none">
+                    <button type="button" class="border-input dark:bg-input/30 flex min-h-8 max-w-full flex-1 cursor-pointer items-center gap-1 overflow-hidden rounded-lg border bg-transparent px-2.5 py-1 text-sm outline-none">
                       <span class="flex flex-1 flex-wrap items-center gap-1">
                         <Badge v-for="r in e.routeRace" :key="r" variant="secondary" class="h-5 shrink-0">{{ lbl(RACE_ROUTES, r) }}</Badge>
                         <span v-if="!e.routeRace.length" class="text-muted-foreground">选择并发分支（点击多选）</span>
@@ -807,7 +807,7 @@ onBeforeRouteLeave(() => {
           <h2 class="text-sm font-medium text-muted-foreground">内置规则（只读）</h2>
           <div v-for="be in builtinEdits" :key="be._uid" class="border-border bg-muted/30 overflow-hidden rounded-xl border" :class="{ 'opacity-60': disabledBuiltins.has(be.name) }">
             <div class="flex items-start gap-2 p-3">
-              <button type="button" class="flex min-w-0 flex-1 items-start gap-2 text-left" @click="toggleOpen(be._uid)">
+              <button type="button" class="flex min-w-0 flex-1 cursor-pointer items-start gap-2 text-left" @click="toggleOpen(be._uid)">
                 <component :is="expanded.has(be._uid) ? ChevronDown : ChevronRight" class="text-muted-foreground mt-0.5 size-4 shrink-0" />
                 <div class="min-w-0 flex-1 space-y-1">
                   <div class="flex items-center gap-2">
@@ -851,7 +851,7 @@ onBeforeRouteLeave(() => {
         <div class="max-h-[60vh] space-y-2 overflow-y-auto pr-1">
           <div v-for="pe in presetEdits" :key="pe.edit._uid" class="border-border overflow-hidden rounded-xl border">
             <div class="flex items-start gap-2 p-3">
-              <button type="button" class="min-w-0 flex-1 space-y-1 text-left" @click="togglePreset(pe.edit._uid)">
+              <button type="button" class="min-w-0 flex-1 cursor-pointer space-y-1 text-left" @click="togglePreset(pe.edit._uid)">
                 <div class="flex items-center gap-2">
                   <component :is="presetExpanded.has(pe.edit._uid) ? ChevronDown : ChevronRight" class="text-muted-foreground size-4 shrink-0" />
                   <span class="truncate font-medium">{{ pe.edit.description || pe.edit.name }}</span>

@@ -64,7 +64,7 @@ onMounted(load)
       </template>
       <template v-else>
         <Card v-for="c in captures" :key="c.id" class="py-0 gap-0">
-        <button class="w-full flex items-center gap-3 p-3 text-sm text-left hover:bg-muted/50"
+        <button class="w-full flex cursor-pointer items-center gap-3 p-3 text-sm text-left hover:bg-muted/50"
           @click="expanded = expanded === c.id ? null : c.id">
           <span class="text-muted-foreground">#{{ c.id }}</span>
           <span class="font-medium">{{ c.provider }}</span>
