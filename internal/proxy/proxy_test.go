@@ -299,6 +299,16 @@ func TestModelsEndpoint(t *testing.T) {
 	}))
 	defer up.Close()
 	a, _ := setup(t, up.URL, []string{"k1"}, "")
+	modelsPath := filepath.Join(os.Getenv("CLOWDER_HOME"), "models.yaml")
+	if err := os.WriteFile(modelsPath, []byte(`
+test-model:
+  - mock/test-model-v1
+patterns:
+  - match: ^mock/unmapped-model$
+    canonical: pattern-model
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	disabledDir := filepath.Join(os.Getenv("CLOWDER_HOME"), "providers", "disabled")
 	if err := os.MkdirAll(disabledDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -339,13 +349,13 @@ models: [disabled-model]
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatal(err)
 	}
-	if resp.Object != "list" || len(resp.Data) != 4 {
+	if resp.Object != "list" || len(resp.Data) != 5 {
 		t.Fatalf("unexpected models response: %+v", resp)
 	}
 	if got := resp.Data[0]; got.ID != "auto" || got.Object != "model" || got.OwnedBy != "clowder" {
 		t.Fatalf("unexpected auto model: %+v", got)
 	}
-	wantIDs := []string{"auto", "mock/test-model-v1", "mock/unmapped-model", "test-model"}
+	wantIDs := []string{"auto", "mock/test-model-v1", "mock/unmapped-model", "pattern-model", "test-model"}
 	for i, got := range resp.Data {
 		if got.ID != wantIDs[i] || got.Object != "model" || got.OwnedBy != "clowder" {
 			t.Fatalf("model[%d] = %+v, want id %q", i, got, wantIDs[i])
@@ -373,9 +383,12 @@ models: [disabled-model]
 	if len(edges) != 1 || edges[0].Provider != "mock" || edges[0].ProviderDisplayName != "Mock" || edges[0].Native != "mock/test-model-v1" {
 		t.Fatalf("unexpected /api/models response: %s", apiW.Body.String())
 	}
-	unmapped := models[""]
-	if len(unmapped) != 1 || unmapped[0].Provider != "mock" || unmapped[0].Native != "mock/unmapped-model" {
-		t.Fatalf("unexpected unmapped models: %s", apiW.Body.String())
+	patternEdges := models["pattern-model"]
+	if len(patternEdges) != 1 || patternEdges[0].Provider != "mock" || patternEdges[0].Native != "mock/unmapped-model" {
+		t.Fatalf("unexpected pattern-only canonical: %s", apiW.Body.String())
+	}
+	if len(models[""]) != 0 {
+		t.Fatalf("pattern-matched model must not remain unmapped: %s", apiW.Body.String())
 	}
 	if _, exists := models["disabled-model"]; exists {
 		t.Fatal("disabled provider model must not be exposed")
