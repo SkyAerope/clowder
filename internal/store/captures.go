@@ -88,16 +88,6 @@ func (s *Store) ListCaptures(rule, fingerprint string, limit int) ([]*Capture, e
 	return out, rows.Err()
 }
 
-// SaveHealth 持久化健康快照（内存为主，这里只是落盘）。
-func (s *Store) SaveHealth(provider, model, status string, avgTTFTMs int64, errorCount int) error {
-	_, err := s.db.Exec(`INSERT INTO provider_health (provider, model, status, avg_ttft_ms, error_count)
-		VALUES (?, ?, ?, ?, ?)
-		ON CONFLICT(provider, model) DO UPDATE SET status=excluded.status,
-			avg_ttft_ms=excluded.avg_ttft_ms, error_count=excluded.error_count`,
-		provider, model, status, avgTTFTMs, errorCount)
-	return err
-}
-
 // AvgTTFT 查询某 (provider, model) 最近 n 条成功请求的平均 TTFT；无数据返回 false。
 func (s *Store) AvgTTFT(provider, model string, n int) (int64, bool) {
 	var avg sql.NullFloat64

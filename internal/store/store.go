@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -68,6 +69,8 @@ CREATE TABLE IF NOT EXISTS provider_health (
     status     TEXT,
     avg_ttft_ms INTEGER,
     error_count    INTEGER DEFAULT 0,
+    backoff_count  INTEGER DEFAULT 0,
+    unhealthy_until TEXT,
     last_error_at  TEXT,
     last_success_at     TEXT,
     PRIMARY KEY (provider, model)
@@ -92,6 +95,15 @@ func Open(dir string) (*Store, error) {
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrate schema: %w", err)
+	}
+	for _, migration := range []string{
+		`ALTER TABLE provider_health ADD COLUMN backoff_count INTEGER DEFAULT 0`,
+		`ALTER TABLE provider_health ADD COLUMN unhealthy_until TEXT`,
+	} {
+		if _, err := db.Exec(migration); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+			db.Close()
+			return nil, fmt.Errorf("migrate provider_health: %w", err)
+		}
 	}
 	return &Store{db: db}, nil
 }
