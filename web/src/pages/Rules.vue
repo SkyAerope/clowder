@@ -15,6 +15,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog'
 import { Save, TriangleAlert, Plus, ChevronDown, ChevronRight } from 'lucide-vue-next'
+import { toast } from 'vue-sonner'
 import {
   TYPE_LABELS, actPhrase, detailToEdit, ifPhrase, normalizeRule, parseRules, rawToEdit,
   routePhrase, serializeRules, summarize, whenPhrase, type EditRule,
@@ -24,7 +25,6 @@ const yamlText = ref('')
 const rules = ref<RuleView[]>([])
 const warnings = ref<{ rule: string; message: string }[]>([])
 const presets = ref<RulePreset[]>([])
-const msg = ref('')
 const saving = ref(false)
 const loaded = ref(false)
 const tab = ref<'visual' | 'source'>('visual')
@@ -126,13 +126,12 @@ async function load() {
 async function save() {
   if (tab.value === 'visual') serializeDraft()
   saving.value = true
-  msg.value = ''
   try {
     await api.put('/api/admin/rules', { yaml: yamlText.value })
-    msg.value = '已保存并生效'
+    toast.success('已保存并生效')
     await load()
   } catch (error: unknown) {
-    msg.value = `保存失败: ${error instanceof Error ? error.message : String(error)}`
+    toast.error(`保存失败: ${error instanceof Error ? error.message : String(error)}`)
   } finally {
     saving.value = false
   }
@@ -147,7 +146,7 @@ function addPreset(p: RulePreset) {
   yamlText.value = y.trimEnd() + '\n\n' + indented + '\n'
   if (tab.value === 'visual') refreshDraft()
   addedPresets.value.add(String(p.rule.name))
-  msg.value = `已插入 ${p.rule.name}，请检查后保存`
+  toast.info(`已插入 ${p.rule.name}，请检查后保存`)
 }
 
 function onBeforeUnload(e: BeforeUnloadEvent) {
@@ -186,10 +185,6 @@ onBeforeRouteLeave(() => {
         </Button>
       </div>
     </div>
-
-    <Alert v-if="msg" :variant="msg.includes('失败') ? 'destructive' : 'default'">
-      <AlertDescription>{{ msg }}</AlertDescription>
-    </Alert>
 
     <Alert v-if="warnings.length" variant="default" class="border-warning/40">
       <TriangleAlert class="size-4 text-warning" />

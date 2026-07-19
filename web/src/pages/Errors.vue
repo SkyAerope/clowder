@@ -17,6 +17,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog'
 import { RefreshCw, BookmarkPlus, Eye } from 'lucide-vue-next'
+import { toast } from 'vue-sonner'
 import {
   blankRule, normalizeRule, parseRuleFragment, serializeRuleFragment, type EditRule,
 } from '@/lib/rule-editor'
@@ -30,7 +31,6 @@ const dialogOpen = ref(false)
 const dialogTab = ref<'visual' | 'source'>('visual')
 const parseError = ref('')
 const saving = ref(false)
-const msg = ref('')
 
 async function load() {
   const q = ruleFilter.value ? `?rule=${encodeURIComponent(ruleFilter.value)}` : ''
@@ -89,7 +89,6 @@ watch(dialogTab, (tab, previous) => {
 
 async function saveRule() {
   if (!dialog.value) return
-  msg.value = ''
   let fragment = dialog.value.yaml
   try {
     if (dialogTab.value === 'visual') {
@@ -111,10 +110,10 @@ async function saveRule() {
     if (!/^rules:/m.test(yaml)) yaml = 'rules:\n' + yaml
     yaml = yaml.trimEnd() + '\n\n' + fragment + '\n'
     await api.put('/api/admin/rules', { yaml })
-    msg.value = '规则已添加并生效'
+    toast.success('规则已添加并生效')
     dialogOpen.value = false
   } catch (error: unknown) {
-    msg.value = `保存失败: ${error instanceof Error ? error.message : String(error)}`
+    toast.error(`保存失败: ${error instanceof Error ? error.message : String(error)}`)
   } finally {
     saving.value = false
   }
@@ -132,10 +131,6 @@ onMounted(load)
         <Button variant="outline" size="icon" @click="load"><RefreshCw class="size-4" /></Button>
       </div>
     </div>
-
-    <Alert v-if="msg" :variant="msg.includes('失败') ? 'destructive' : 'default'">
-      <AlertDescription>{{ msg }}</AlertDescription>
-    </Alert>
 
     <div class="ring-foreground/10 bg-card overflow-x-auto rounded-xl ring-1">
       <Table>
