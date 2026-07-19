@@ -195,8 +195,7 @@ func (a *App) checkKey(ctx context.Context, keyID int64, chain bool) (CheckProbe
 		if err == nil {
 			if res.Metadata != nil {
 				if b, marshalErr := json.Marshal(res.Metadata); marshalErr == nil {
-					k.Metadata = string(b)
-					a.Store.UpdateKeyMetadata(keyID, string(b))
+					_ = a.Pool.UpdateKeyMetadata(keyID, string(b))
 				}
 			}
 			a.Log.Info("check key result", "key", keyID, "provider", k.Provider, "status", res.Status)
@@ -212,8 +211,7 @@ func (a *App) checkKey(ctx context.Context, keyID int64, chain bool) (CheckProbe
 	}
 	if res.Metadata != nil {
 		if b, err := json.Marshal(res.Metadata); err == nil {
-			k.Metadata = string(b)
-			a.Store.UpdateKeyMetadata(keyID, string(b))
+			_ = a.Pool.UpdateKeyMetadata(keyID, string(b))
 		}
 	}
 	a.Log.Info("check key result", "key", keyID, "provider", k.Provider, "status", res.Status)

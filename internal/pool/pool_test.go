@@ -1,6 +1,7 @@
 package pool
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -53,6 +54,142 @@ func TestPickPromotesIdleWhenNoActive(t *testing.T) {
 	}
 	if selected.Status != store.KeyActive {
 		t.Fatalf("selected status = %q, want active", selected.Status)
+	}
+}
+
+func TestPickChoosesLowestIdleID(t *testing.T) {
+	p, cleanup := newTestPool(t, store.KeyIdle, store.KeyIdle, store.KeyIdle)
+	defer cleanup()
+
+	keys := p.Keys("test")
+	selected, err := p.Pick("test", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selected.ID != keys[0].ID {
+		t.Fatalf("selected ID = %d, want lowest ID %d", selected.ID, keys[0].ID)
+	}
+}
+
+func TestPickRecoversExpiredKeyWhenNoActive(t *testing.T) {
+	p, cleanup := newTestPool(t, store.KeyRateLimited, store.KeyRateLimited)
+	defer cleanup()
+
+	keys := p.Keys("test")
+	if err := p.MarkRateLimited(keys[0].ID, time.Now().Add(-time.Second), 2); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.MarkRateLimited(keys[1].ID, time.Now().Add(time.Minute), 3); err != nil {
+		t.Fatal(err)
+	}
+	selected, err := p.Pick("test", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selected.ID != keys[0].ID || selected.Status != store.KeyActive {
+		t.Fatalf("selected = id %d status %q, want expired key %d active", selected.ID, selected.Status, keys[0].ID)
+	}
+
+	rows, err := p.st.ListKeys("test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows[0].Status != store.KeyActive || rows[0].RateLimitUntil != nil {
+		t.Fatalf("persisted expired key = status %q until %v", rows[0].Status, rows[0].RateLimitUntil)
+	}
+}
+
+func TestPickReturnsActiveBeforeBackgroundRecovery(t *testing.T) {
+	p, cleanup := newTestPool(t, store.KeyActive, store.KeyRateLimited)
+	defer cleanup()
+
+	keys := p.Keys("test")
+	if err := p.MarkRateLimited(keys[1].ID, time.Now().Add(-time.Second), 4); err != nil {
+		t.Fatal(err)
+	}
+	selected, err := p.Pick("test", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selected.ID != keys[0].ID {
+		t.Fatalf("selected ID = %d, want existing active %d", selected.ID, keys[0].ID)
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		rows, err := p.st.ListKeys("test")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rows[1].Status == store.KeyIdle && rows[1].RateLimitUntil == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("expired key was not recovered: status %q until %v", rows[1].Status, rows[1].RateLimitUntil)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func TestConcurrentPickKeepsSingleActive(t *testing.T) {
+	p, cleanup := newTestPool(t, store.KeyIdle, store.KeyIdle, store.KeyIdle)
+	defer cleanup()
+
+	var wg sync.WaitGroup
+	for range 100 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := p.Pick("test", nil); err != nil {
+				t.Errorf("Pick: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	active := 0
+	for _, k := range p.Keys("test") {
+		if k.Status == store.KeyActive {
+			active++
+		}
+	}
+	if active != 1 {
+		t.Fatalf("active keys = %d, want 1", active)
+	}
+}
+
+func TestReadPathsRecoverExpiredKeys(t *testing.T) {
+	tests := []struct {
+		name string
+		read func(*Pool, int64)
+	}{
+		{name: "Keys", read: func(p *Pool, _ int64) { _ = p.Keys("test") }},
+		{name: "UsableCount", read: func(p *Pool, _ int64) { p.UsableCount("test") }},
+		{name: "FindByID", read: func(p *Pool, id int64) { _ = p.FindByID(id) }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p, cleanup := newTestPool(t, store.KeyRateLimited)
+			defer cleanup()
+
+			keyID := p.Keys("test")[0].ID
+			if err := p.MarkRateLimited(keyID, time.Now().Add(-time.Second), 5); err != nil {
+				t.Fatal(err)
+			}
+			tt.read(p, keyID)
+
+			key := p.FindByID(keyID)
+			if key.Status != store.KeyIdle || key.RateLimitUntil != nil || key.RateLimitCount != 5 {
+				t.Fatalf("recovered key = status %q until %v count %d", key.Status, key.RateLimitUntil, key.RateLimitCount)
+			}
+			rows, err := p.st.ListKeys("test")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if rows[0].Status != store.KeyIdle || rows[0].RateLimitUntil != nil || rows[0].RateLimitCount != 5 {
+				t.Fatalf("persisted key = status %q until %v count %d", rows[0].Status, rows[0].RateLimitUntil, rows[0].RateLimitCount)
+			}
+		})
 	}
 }
 

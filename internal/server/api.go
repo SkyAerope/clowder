@@ -238,12 +238,7 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 	// ---- 管理接口 ----
 	mux.HandleFunc("GET /api/admin/keys", admin(func(w http.ResponseWriter, r *http.Request) {
 		provider := r.URL.Query().Get("provider")
-		keys, err := a.Store.ListKeys(provider)
-		if err != nil {
-			jsonErr(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		jsonOK(w, keyViews(keys))
+		jsonOK(w, keyViews(a.Pool.Keys(provider)))
 	}))
 
 	mux.HandleFunc("POST /api/admin/keys/{id}/disable", admin(func(w http.ResponseWriter, r *http.Request) {
@@ -354,12 +349,11 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 			jsonErr(w, http.StatusNotFound, "provider not found")
 			return
 		}
-		keys, _ := a.Store.ListKeys(name)
 		jsonOK(w, map[string]any{
 			"manifest":               manifestView(ps),
 			"manifest_yaml":          readManifestRaw(ps),
 			"models":                 ps.Models,
-			"keys":                   keyViews(keys),
+			"keys":                   keyViews(a.Pool.Keys(name)),
 			"last_register_at":       timeOrNull(ps.LastRegisterAt),
 			"last_register_duration": ps.LastRegisterDuration.Milliseconds(),
 			"last_register_error":    ps.LastRegisterError,
