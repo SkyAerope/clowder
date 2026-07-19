@@ -26,7 +26,7 @@ async function load() {
       api.get<Record<string, ModelEdge[]>>('/api/models'),
       api.get<Candidate[]>('/api/auto'),
     ])
-    providers.value = p ?? []
+    providers.value = p ? [...p].sort((a, b) => (a.display_name || a.name).localeCompare(b.display_name || b.name)) : []
     models.value = m ?? {}
     auto.value = a ?? []
   } catch (e: any) {

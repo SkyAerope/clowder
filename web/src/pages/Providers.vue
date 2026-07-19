@@ -21,7 +21,8 @@ async function load() {
   loading.value = true
   msg.value = ''
   try {
-    providers.value = (await api.get<Provider[]>('/api/providers')) ?? []
+    const p = await api.get<Provider[]>('/api/providers')
+    providers.value = p ? [...p].sort((a, b) => (a.display_name || a.name).localeCompare(b.display_name || b.name)) : []
   } catch (e: any) {
     msg.value = e.message
   } finally {

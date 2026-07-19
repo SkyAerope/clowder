@@ -37,10 +37,9 @@ const canonicals = computed(() =>
 const rows = computed<Row[]>(() => {
   const out: Row[] = []
   for (const c of canonicals.value) {
-    const edges = [...(props.models[c] ?? [])].sort((a, b) => {
-      if (a.best !== b.best) return a.best ? -1 : 1
-      return a.provider.localeCompare(b.provider)
-    })
+    const edges = [...(props.models[c] ?? [])].sort((a, b) =>
+      (a.provider_display_name || a.provider).localeCompare(b.provider_display_name || b.provider),
+    )
     const start = out.length
     for (const e of edges) {
       out.push({
