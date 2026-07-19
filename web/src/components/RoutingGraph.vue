@@ -63,6 +63,7 @@ interface Group {
   canonical: string
   start: number
   span: number
+  healthy: boolean
 }
 const groups = computed<Group[]>(() => {
   const seen = new Map<string, Group>()
@@ -71,9 +72,11 @@ const groups = computed<Group[]>(() => {
     if (!r.canonical) return
     let g = seen.get(r.canonical)
     if (!g) {
-      g = { canonical: r.canonical, start: r.groupStart, span: r.groupSpan }
+      g = { canonical: r.canonical, start: r.groupStart, span: r.groupSpan, healthy: r.healthy }
       seen.set(r.canonical, g)
       out.push(g)
+    } else if (r.healthy) {
+      g.healthy = true
     }
   })
   return out
@@ -95,8 +98,9 @@ onMounted(() => {
 })
 onUnmounted(() => ro?.disconnect())
 
-const sideW = 180
-const midBoxW = 200
+const boxW = 200
+const sideW = boxW + 16
+const midBoxW = boxW
 const leftDotX = sideW
 const midX = computed(() => width.value / 2)
 const midLeftX = computed(() => midX.value - midBoxW / 2)
@@ -105,17 +109,24 @@ const rightDotX = computed(() => width.value - sideW)
 
 const rowY = (i: number) => PAD + i * ROW_H + ROW_H / 2
 const groupY = (g: Group) => PAD + g.start * ROW_H + (g.span * ROW_H) / 2
+const rowGroupY = (r: Row) => PAD + r.groupStart * ROW_H + (r.groupSpan * ROW_H) / 2
 
 function curve(x1: number, y1: number, x2: number, y2: number) {
   const mx = (x1 + x2) / 2
   return `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`
 }
 
-const hovered = ref('')
-
 function strokeOf(healthy: boolean, best: boolean) {
   if (!healthy) return 'var(--color-destructive)'
   return best ? 'var(--color-primary)' : 'var(--color-border)'
+}
+
+function strokeWidthOf(healthy: boolean, emphasized: boolean) {
+  return healthy && emphasized ? 1.5 : 1
+}
+
+function lineWidthOf(healthy: boolean, emphasized: boolean) {
+  return healthy && emphasized ? 2.5 : 1.5
 }
 
 function short(s: string, max = 26) {
@@ -130,22 +141,18 @@ function short(s: string, max = 26) {
       <template v-for="(r, i) in rows" :key="r.id">
         <path
           v-if="r.canonical"
-          :d="curve(leftDotX, groupY(groups.find((g) => g.canonical === r.canonical)!), midLeftX, rowY(i))"
+          :d="curve(leftDotX, rowGroupY(r), midLeftX, rowY(i))"
           fill="none"
           :stroke="strokeOf(r.healthy, r.best)"
-          :stroke-width="r.best ? 2.5 : 1.5"
+          :stroke-width="lineWidthOf(r.healthy, r.best)"
           :stroke-dasharray="r.healthy ? undefined : '4 4'"
-          :opacity="hovered && hovered !== r.id ? 0.18 : 1"
-          class="transition-opacity"
         />
         <path
           :d="curve(midRightX, rowY(i), rightDotX, rowY(i))"
           fill="none"
           :stroke="strokeOf(r.healthy, emphasized(r))"
-          :stroke-width="emphasized(r) ? 2.5 : 1.5"
+          :stroke-width="lineWidthOf(r.healthy, emphasized(r))"
           :stroke-dasharray="r.healthy ? undefined : '4 4'"
-          :opacity="hovered && hovered !== r.id ? 0.18 : 1"
-          class="transition-opacity"
         />
       </template>
 
@@ -157,7 +164,9 @@ function short(s: string, max = 26) {
           :width="sideW - 16"
           height="28"
           rx="8"
-          class="fill-[var(--color-muted)]"
+          fill="var(--color-card)"
+          :stroke="strokeOf(g.healthy, false)"
+          stroke-width="1"
         />
         <text
           :x="sideW - 16"
@@ -168,17 +177,16 @@ function short(s: string, max = 26) {
           {{ short(g.canonical, 22) }}
           <title>{{ g.canonical }}</title>
         </text>
-        <circle :cx="leftDotX" :cy="groupY(g)" r="3.5" class="fill-[var(--color-primary)]" />
+        <circle
+          :cx="leftDotX"
+          :cy="groupY(g)"
+          r="3.5"
+          :fill="g.healthy ? 'black' : 'var(--color-destructive)'"
+        />
       </g>
 
       <!-- 中列：模型实际名称（每行一个） -->
-      <g
-        v-for="(r, i) in rows"
-        :key="'m-' + r.id"
-        class="cursor-default"
-        @mouseenter="hovered = r.id"
-        @mouseleave="hovered = ''"
-      >
+      <g v-for="(r, i) in rows" :key="'m-' + r.id">
         <rect
           :x="midLeftX"
           :y="rowY(i) - 14"
@@ -187,7 +195,7 @@ function short(s: string, max = 26) {
           rx="8"
           fill="var(--color-card)"
           :stroke="strokeOf(r.healthy, emphasized(r))"
-          :stroke-width="emphasized(r) ? 1.5 : 1"
+          :stroke-width="strokeWidthOf(r.healthy, emphasized(r))"
         />
         <text
           :x="midX"
@@ -208,7 +216,9 @@ function short(s: string, max = 26) {
           :width="sideW - 16"
           height="28"
           rx="8"
-          class="fill-[var(--color-muted)]"
+          fill="var(--color-card)"
+          :stroke="strokeOf(r.healthy, emphasized(r))"
+          :stroke-width="strokeWidthOf(r.healthy, emphasized(r))"
         />
         <foreignObject
           :x="rightDotX + 16"
@@ -224,7 +234,7 @@ function short(s: string, max = 26) {
             <span v-if="r.ttft" class="shrink-0 text-muted-foreground"> · {{ r.ttft }}</span>
           </div>
         </foreignObject>
-        <circle :cx="rightDotX" :cy="rowY(i)" r="3.5" class="fill-[var(--color-primary)]" />
+        <circle :cx="rightDotX" :cy="rowY(i)" r="3.5" :fill="strokeOf(r.healthy, emphasized(r))" />
       </g>
     </svg>
     <div class="flex flex-wrap items-center gap-4 text-xs text-muted-foreground mt-2">
