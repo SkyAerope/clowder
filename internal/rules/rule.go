@@ -214,9 +214,6 @@ func buildRule(rr rawRule, source int) (*Rule, error) {
 }
 
 func parseWhen(m map[string]any, w *When) error {
-	if len(m) == 0 {
-		return fmt.Errorf("when is required")
-	}
 	for k, v := range m {
 		switch k {
 		case "provider":

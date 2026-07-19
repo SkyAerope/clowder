@@ -15,6 +15,22 @@ func TestDefaultRulesParse(t *testing.T) {
 	_ = PresetRules() // panic 即失败
 }
 
+func TestRuleWithoutWhenMatchesAnyUpstreamEvent(t *testing.T) {
+	rs, err := ParseRules([]byte(`
+rules:
+  - name: unconditional
+    route: passthrough
+`), SourceUserFile)
+	if err != nil {
+		t.Fatalf("rule without when should parse: %v", err)
+	}
+
+	engine := NewEngine(rs)
+	if got := engine.Match(&Event{Type: "upstream", StatusCode: 200}); got == nil || got.Name != "unconditional" {
+		t.Fatalf("rule without when should match upstream events, got %v", name(got))
+	}
+}
+
 func engineWith(t *testing.T, extraYAML string) *Engine {
 	t.Helper()
 	all := BuiltinRules()
