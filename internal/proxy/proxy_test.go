@@ -133,6 +133,31 @@ func TestNonStreamingAggregation(t *testing.T) {
 	}
 }
 
+func TestSuccessfulRequest_persists_healthy_provider_state(t *testing.T) {
+	// Given
+	up := sseUpstream(nil)
+	defer up.Close()
+	a, h := setup(t, up.URL, []string{"k1"}, "")
+
+	// When
+	w := chatReq(t, h, `{"model":"test-model","messages":[]}`)
+
+	// Then
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+	snapshots, err := a.Store.ListHealth()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, snapshot := range snapshots {
+		if snapshot.Provider == "mock" && snapshot.Model == "" && snapshot.Status == "healthy" {
+			return
+		}
+	}
+	t.Fatalf("provider healthy state not persisted: %#v", snapshots)
+}
+
 func TestStreamingPassthrough(t *testing.T) {
 	up := sseUpstream(nil)
 	defer up.Close()
@@ -396,6 +421,34 @@ models: [disabled-model]
 	if calls := atomic.LoadInt32(&upstreamModelCalls); calls != 0 {
 		t.Fatalf("model list endpoints made %d upstream model requests", calls)
 	}
+	for _, key := range a.Pool.Keys("mock") {
+		if err := a.Pool.SetStatus(key.ID, "invalid"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if candidates := a.CandidatesFor("test-model"); len(candidates) != 0 {
+		t.Fatalf("provider without usable keys returned %d candidates", len(candidates))
+	}
+
+	unavailableModelsReq := httptest.NewRequest("GET", "/api/models", nil)
+	unavailableModelsW := httptest.NewRecorder()
+	h.ServeHTTP(unavailableModelsW, unavailableModelsReq)
+	if unavailableModelsW.Code != http.StatusOK {
+		t.Fatalf("GET /api/models status %d: %s", unavailableModelsW.Code, unavailableModelsW.Body.String())
+	}
+	var unavailableModels map[string][]struct {
+		Provider string `json:"provider"`
+		Healthy  bool   `json:"healthy"`
+		Best     bool   `json:"best"`
+	}
+	if err := json.Unmarshal(unavailableModelsW.Body.Bytes(), &unavailableModels); err != nil {
+		t.Fatal(err)
+	}
+	for _, edge := range unavailableModels["test-model"] {
+		if edge.Provider == "mock" && (edge.Healthy || edge.Best) {
+			t.Fatalf("provider without usable keys must be unhealthy and not best: %s", unavailableModelsW.Body.String())
+		}
+	}
 
 	providersReq := httptest.NewRequest("GET", "/api/providers", nil)
 	providersW := httptest.NewRecorder()
@@ -404,20 +457,28 @@ models: [disabled-model]
 		t.Fatalf("GET /api/providers status %d: %s", providersW.Code, providersW.Body.String())
 	}
 	var providers []struct {
-		Name   string `json:"name"`
-		Status string `json:"status"`
+		Name       string `json:"name"`
+		Status     string `json:"status"`
+		ActiveKeys int    `json:"active_keys"`
 	}
 	if err := json.Unmarshal(providersW.Body.Bytes(), &providers); err != nil {
 		t.Fatal(err)
 	}
 	foundDisabled := false
+	foundUnavailable := false
 	for _, provider := range providers {
 		if provider.Name == "disabled" {
 			foundDisabled = provider.Status == "disabled"
 		}
+		if provider.Name == "mock" && provider.ActiveKeys == 0 {
+			foundUnavailable = provider.Status == "unhealthy"
+		}
 	}
 	if !foundDisabled {
 		t.Fatalf("disabled provider missing from /api/providers: %s", providersW.Body.String())
+	}
+	if !foundUnavailable {
+		t.Fatalf("enabled provider without usable keys must be unhealthy: %s", providersW.Body.String())
 	}
 }
 

@@ -70,14 +70,38 @@ func New(cfg *config.Config) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	healthSnapshots, err := st.ListHealth()
+	if err != nil {
+		st.Close()
+		return nil, fmt.Errorf("load provider health: %w", err)
+	}
+	persistedHealth := make([]health.PersistedState, len(healthSnapshots))
+	for i, snapshot := range healthSnapshots {
+		persistedHealth[i] = health.PersistedState{
+			Provider: snapshot.Provider, Model: snapshot.Model, Status: snapshot.Status,
+			AvgTTFTMs: snapshot.AvgTTFTMs, ErrorCount: snapshot.ErrorCount,
+			BackoffCount: snapshot.BackoffCount, UnhealthyUntil: snapshot.UnhealthyUntil,
+			LastErrorAt: snapshot.LastErrorAt, LastSuccessAt: snapshot.LastSuccessAt,
+		}
+	}
 	a := &App{
 		Cfg:                 cfg,
 		Store:               st,
-		Health:              health.New(),
 		providers:           map[string]*ProviderState{},
 		configuredProviders: map[string]*ProviderState{},
 		Log:                 slog.Default(),
 	}
+	a.Health = health.NewPersistent(persistedHealth, func(state health.PersistedState) {
+		err := st.SaveHealth(store.HealthSnapshot{
+			Provider: state.Provider, Model: state.Model, Status: state.Status,
+			AvgTTFTMs: state.AvgTTFTMs, ErrorCount: state.ErrorCount,
+			BackoffCount: state.BackoffCount, UnhealthyUntil: state.UnhealthyUntil,
+			LastErrorAt: state.LastErrorAt, LastSuccessAt: state.LastSuccessAt,
+		})
+		if err != nil {
+			a.Log.Warn("save provider health", "provider", state.Provider, "model", state.Model, "error", err)
+		}
+	})
 	a.Runner = script.NewRunner(
 		time.Duration(cfg.Pool.RegisterBackoffBaseSeconds)*time.Second,
 		time.Duration(cfg.Pool.RegisterBackoffMaxSeconds)*time.Second,
@@ -175,6 +199,10 @@ func (a *App) Reload() error {
 	a.Engine = engine
 	for _, ps := range states {
 		a.rebuildCanonicalLocked(ps)
+		a.Health.Ensure(ps.Manifest.Name, "")
+		for _, native := range ps.Models {
+			a.Health.Ensure(ps.Manifest.Name, native)
+		}
 	}
 	if a.scheduler != nil {
 		a.scheduler.Stop()
