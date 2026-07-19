@@ -69,6 +69,7 @@ func Load(path string) (*Mapping, error) {
 					return nil, fmt.Errorf("models.yaml pattern %q: %w", rp.Match, err)
 				}
 				m.patterns = append(m.patterns, pattern{re: re, canonical: rp.Canonical})
+				m.canonicalOrder = appendUnique(m.canonicalOrder, rp.Canonical)
 			}
 			continue
 		}
@@ -77,7 +78,7 @@ func Load(path string) (*Mapping, error) {
 			return nil, fmt.Errorf("models.yaml %s: %w", key, err)
 		}
 		m.canonicalAliases[key] = aliases
-		m.canonicalOrder = append(m.canonicalOrder, key)
+		m.canonicalOrder = appendUnique(m.canonicalOrder, key)
 		for _, a := range aliases {
 			m.canonicalsByAlias[a] = appendUnique(m.canonicalsByAlias[a], key)
 		}

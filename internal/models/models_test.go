@@ -20,6 +20,8 @@ patterns:
     canonical: pattern-model
   - match: "native$"
     canonical: suffix-model
+  - match: "^never$"
+    canonical: model-a
 `), 0o644)
 	if err != nil {
 		t.Fatal(err)
@@ -34,6 +36,9 @@ patterns:
 	}
 	if got, want := mapping.CanonicalsOf("shared-other-native"), []string{"pattern-model", "suffix-model"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("pattern canonicals = %v, want %v", got, want)
+	}
+	if got, want := mapping.Canonicals(), []string{"model-a", "model-b", "pattern-model", "suffix-model"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("canonicals = %v, want %v", got, want)
 	}
 }
 
