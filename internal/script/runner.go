@@ -23,8 +23,10 @@ type RegisterResult struct {
 
 // CheckResult 是 check.py 的 stdout JSON。
 type CheckResult struct {
-	Status   string         `json:"status"` // active|invalid|rate_limited|error
-	Metadata map[string]any `json:"metadata"`
+	Status        string         `json:"status"` // active|invalid|rate_limited|error
+	Metadata      map[string]any `json:"metadata"`
+	ModelResponse string         `json:"model_response"`
+	TTFTMS        int64          `json:"ttft_ms"`
 }
 
 // Runner 管理脚本执行的串行锁与退避状态。

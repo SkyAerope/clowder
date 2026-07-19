@@ -1,9 +1,11 @@
 package app
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"math/rand"
 	"net/http"
@@ -28,6 +30,12 @@ type ActionContext struct {
 	ReqHeaders, ReqBody, RespHeaders, RespBody string
 	StatusCode                                 int
 	Fingerprint                                string
+}
+
+type CheckProbeResult struct {
+	Status        string
+	ModelResponse string
+	TTFTMS        int64
 }
 
 // RunActions 后台并行执行规则的 do 列表（不阻塞请求主线）。
@@ -141,13 +149,22 @@ func (a *App) saveCapture(act rules.Action, actx *ActionContext) {
 // CheckKey 对单个 key 跑 check；chain=true 时结果回灌引擎。
 // 优先级：scripts.check > default_check_model 推理探活 > 随机 healthy 模型探活。
 func (a *App) CheckKey(ctx context.Context, keyID int64, chain bool) (string, error) {
+	result, err := a.checkKey(ctx, keyID, chain)
+	return result.Status, err
+}
+
+func (a *App) CheckKeyWithProbe(ctx context.Context, keyID int64, chain bool) (CheckProbeResult, error) {
+	return a.checkKey(ctx, keyID, chain)
+}
+
+func (a *App) checkKey(ctx context.Context, keyID int64, chain bool) (CheckProbeResult, error) {
 	k := a.Pool.FindByID(keyID)
 	if k == nil {
-		return "", nil
+		return CheckProbeResult{}, nil
 	}
 	ps := a.Provider(k.Provider)
 	if ps == nil {
-		return "", nil
+		return CheckProbeResult{}, nil
 	}
 	m := ps.Manifest
 
@@ -166,14 +183,32 @@ func (a *App) CheckKey(ctx context.Context, keyID int64, chain bool) (string, er
 		}
 		if model == "" {
 			a.Log.Warn("check key: no check script and no healthy model for probe", "key", keyID, "provider", k.Provider)
-			return "", nil
+			return CheckProbeResult{}, nil
 		}
-		res, err = a.checkViaChat(ctx, m.BaseURL, k.APIKey, model,
+		probe, probeErr := a.checkViaChat(ctx, m.BaseURL, k.APIKey, model,
 			time.Duration(m.Scripts.CheckTimeout)*time.Second)
+		if probeErr != nil {
+			err = probeErr
+		} else {
+			res = &script.CheckResult{Status: probe.Status}
+		}
+		if err == nil {
+			if res.Metadata != nil {
+				if b, marshalErr := json.Marshal(res.Metadata); marshalErr == nil {
+					k.Metadata = string(b)
+					a.Store.UpdateKeyMetadata(keyID, string(b))
+				}
+			}
+			a.Log.Info("check key result", "key", keyID, "provider", k.Provider, "status", res.Status)
+			if chain {
+				a.FeedCheckResult(k.Provider, keyID, res.Status)
+			}
+			return CheckProbeResult{Status: probe.Status, ModelResponse: probe.ModelResponse, TTFTMS: probe.TTFTMS}, nil
+		}
 	}
 	if err != nil {
 		a.Log.Warn("check key", "key", keyID, "error", err)
-		return "", err
+		return CheckProbeResult{}, err
 	}
 	if res.Metadata != nil {
 		if b, err := json.Marshal(res.Metadata); err == nil {
@@ -185,7 +220,11 @@ func (a *App) CheckKey(ctx context.Context, keyID int64, chain bool) (string, er
 	if chain {
 		a.FeedCheckResult(k.Provider, keyID, res.Status)
 	}
-	return res.Status, nil
+	return CheckProbeResult{
+		Status:        res.Status,
+		ModelResponse: res.ModelResponse,
+		TTFTMS:        res.TTFTMS,
+	}, nil
 }
 
 func (a *App) pickRandomHealthyModel(providerName string) string {
@@ -205,32 +244,32 @@ func (a *App) pickRandomHealthyModel(providerName string) string {
 	return natives[rand.Intn(len(natives))]
 }
 
-func (a *App) checkViaChat(ctx context.Context, baseURL, apiKey, model string, timeout time.Duration) (*script.CheckResult, error) {
+func (a *App) checkViaChat(ctx context.Context, baseURL, apiKey, model string, timeout time.Duration) (CheckProbeResult, error) {
 	url := JoinURL(baseURL, "/v1/chat/completions")
 	body := map[string]any{
 		"model":      model,
-		"messages":   []map[string]any{{"role": "user", "content": "yes"}},
+		"messages":   []map[string]any{{"role": "user", "content": "回答yes"}},
 		"max_tokens": 16,
-		"stream":     false,
+		"stream":     true,
 	}
 	up, err := json.Marshal(body)
 	if err != nil {
-		return nil, err
+		return CheckProbeResult{}, err
 	}
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(cctx, http.MethodPost, url, bytes.NewReader(up))
 	if err != nil {
-		return nil, err
+		return CheckProbeResult{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
+	start := time.Now()
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return &script.CheckResult{Status: "error"}, err
+		return CheckProbeResult{Status: "error"}, err
 	}
 	defer resp.Body.Close()
-	io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
 
 	status := "error"
 	switch {
@@ -241,7 +280,46 @@ func (a *App) checkViaChat(ctx context.Context, baseURL, apiKey, model string, t
 	case resp.StatusCode == 429:
 		status = "rate_limited"
 	}
-	return &script.CheckResult{Status: status}, nil
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return CheckProbeResult{Status: status}, nil
+	}
+
+	var ttftMS int64
+	var response strings.Builder
+	scanner := bufio.NewScanner(io.LimitReader(resp.Body, 1<<20))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if data == "[DONE]" {
+			break
+		}
+		var chunk struct {
+			Choices []struct {
+				Delta struct {
+					Content string `json:"content"`
+				} `json:"delta"`
+			} `json:"choices"`
+		}
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil || len(chunk.Choices) == 0 {
+			continue
+		}
+		content := chunk.Choices[0].Delta.Content
+		if content == "" {
+			continue
+		}
+		if response.Len() == 0 {
+			// TTFT starts when the request is sent and ends at the first content token.
+			ttftMS = time.Since(start).Milliseconds()
+		}
+		response.WriteString(content)
+	}
+	if err := scanner.Err(); err != nil {
+		return CheckProbeResult{Status: "error"}, fmt.Errorf("read check response: %w", err)
+	}
+	return CheckProbeResult{Status: status, ModelResponse: response.String(), TTFTMS: ttftMS}, nil
 }
 
 // CheckKeys 对某 provider（空 = 全部）的所有 key 逐个跑 check。

@@ -92,14 +92,10 @@ export interface KeyRow {
   provider: string
   api_key: string
   email: string
-  password: string
   status: string
   rate_limit_count: number
   rate_limit_until?: string
-  first_request_at?: string
   last_used_at?: string
-  created_at: string
-  metadata?: string
 }
 
 export interface RequestLog {

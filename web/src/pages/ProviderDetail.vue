@@ -31,7 +31,7 @@ import {
   DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
-import { Plus, Stethoscope, Check, X, ArrowLeft, FileCog, Save, MoreVertical, Trash2, CircleCheck, Ban, CircleDashed, SlidersHorizontal } from 'lucide-vue-next'
+import { Plus, Stethoscope, Check, X, ArrowLeft, FileCog, Save, MoreVertical, Trash2, CircleCheck, Ban, CircleDashed, SlidersHorizontal, Info } from 'lucide-vue-next'
 import { RouterLink } from 'vue-router'
 
 const route = useRoute()
@@ -54,12 +54,12 @@ const importOpen = ref(false)
 const importKeys = ref('')
 const checking = ref(false)
 const providerEnabledSaving = ref(false)
-// { id: { loading, result: 'success'|'error'|null, checkStatus, metadata } }
-const keyState = ref<Record<number, { loading: boolean; result: 'success' | 'error' | null; checkStatus: string; metadata: string }>>({})
+// { id: { loading, result: 'success'|'error'|null, checkStatus, metadata, modelResponse, ttftMS } }
+const keyState = ref<Record<number, { loading: boolean; result: 'success' | 'error' | null; checkStatus: string; metadata: string; modelResponse: string; ttftMS: number }>>({})
 
 function ensureKeyState(id: number) {
   if (!keyState.value[id]) {
-    keyState.value[id] = { loading: false, result: null, checkStatus: '', metadata: '' }
+    keyState.value[id] = { loading: false, result: null, checkStatus: '', metadata: '', modelResponse: '', ttftMS: 0 }
   }
 }
 
@@ -104,16 +104,18 @@ async function importKeysToDatabase() {
 async function keyAction(k: KeyRow, act: 'disable' | 'enable' | 'check') {
   if (act === 'check') {
     ensureKeyState(k.id)
-    keyState.value[k.id] = { loading: true, result: null, checkStatus: '', metadata: '' }
+    keyState.value[k.id] = { loading: true, result: null, checkStatus: '', metadata: '', modelResponse: '', ttftMS: 0 }
   }
   try {
-    const resp = await api.post<{ check_status: string; metadata: string; status: string }>(`/api/admin/keys/${k.id}/${act}`)
+    const resp = await api.post<{ check_status: string; metadata: string; model_response: string; ttft_ms: number }>(`/api/admin/keys/${k.id}/${act}`)
     if (act === 'check') {
       keyState.value[k.id] = {
         loading: false,
         result: resp.check_status === 'active' ? 'success' : 'error',
         checkStatus: resp.check_status ?? '',
         metadata: resp.metadata ?? '',
+        modelResponse: resp.model_response ?? '',
+        ttftMS: resp.ttft_ms ?? 0,
       }
     } else {
       const labels: Record<string, string> = { disable: '已禁用', enable: '已启用' }
@@ -122,7 +124,7 @@ async function keyAction(k: KeyRow, act: 'disable' | 'enable' | 'check') {
     await load()
   } catch (e: any) {
     if (act === 'check') {
-      keyState.value[k.id] = { loading: false, result: 'error', checkStatus: '', metadata: '' }
+      keyState.value[k.id] = { loading: false, result: 'error', checkStatus: '', metadata: '', modelResponse: '', ttftMS: 0 }
     } else {
       toast.error(`key #${k.id} ${act} 失败: ${e.message}`)
     }
@@ -373,7 +375,7 @@ onMounted(load)
           <dt class="text-muted-foreground">check 脚本</dt><dd>{{ detail.manifest.has_check ? '有' : '无' }}</dd>
           <template v-if="!detail.manifest.has_check">
             <dt class="text-muted-foreground">默认测试模型</dt>
-            <dd class="font-mono text-xs break-all">{{ detail.manifest.default_check_model || '（未设置，check 时随机选 healthy 模型）' }}</dd>
+            <dd class="font-mono text-xs break-all">{{ detail.manifest.default_check_model || '（未设置）' }}</dd>
           </template>
         </dl>
       </Card>
@@ -402,7 +404,7 @@ onMounted(load)
           <TableHeader>
             <TableRow>
               <TableHead>ID</TableHead><TableHead>Key</TableHead><TableHead>Email</TableHead>
-              <TableHead>状态</TableHead><TableHead>限流次数</TableHead><TableHead>最后使用</TableHead>
+              <TableHead>状态</TableHead><TableHead>最后使用</TableHead>
               <TableHead class="text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
@@ -422,8 +424,20 @@ onMounted(load)
                 </div>
                 <span v-else class="text-muted-foreground">—</span>
               </TableCell>
-              <TableCell><StatusBadge :status="k.status" /></TableCell>
-              <TableCell>{{ k.rate_limit_count }}</TableCell>
+              <TableCell>
+                <Tooltip v-if="k.status === 'rate_limited'">
+                  <TooltipTrigger as-child>
+                    <Badge variant="outline" class="border-transparent bg-warning/20 text-warning">
+                      限流 <Info class="size-3" />
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent class="text-xs">
+                    <p>限流 {{ k.rate_limit_count }} 次</p>
+                    <p>恢复于 {{ fmtTime(k.rate_limit_until) }}</p>
+                  </TooltipContent>
+                </Tooltip>
+                <StatusBadge v-else :status="k.status" />
+              </TableCell>
               <TableCell class="text-xs">{{ fmtTime(k.last_used_at) }}</TableCell>
               <TableCell>
                 <div class="flex justify-end gap-1">
@@ -465,6 +479,8 @@ onMounted(load)
                     >
                       <div class="space-y-1">
                         <p>检查通过：{{ keyState[k.id]?.checkStatus }}</p>
+                        <p v-if="keyState[k.id]?.modelResponse">模型回复：{{ keyState[k.id]?.modelResponse }}</p>
+                        <p v-if="keyState[k.id]?.ttftMS">TTFT：{{ keyState[k.id]?.ttftMS }} ms</p>
                         <p v-if="keyState[k.id]?.metadata" class="break-all">metadata: <code class="font-mono text-2xs">{{ keyState[k.id]?.metadata }}</code></p>
                         <p>点击再次检查</p>
                       </div>
@@ -475,6 +491,8 @@ onMounted(load)
                     >
                       <div class="space-y-1">
                          <p>状态异常：{{ keyState[k.id]?.checkStatus }}</p>
+                        <p v-if="keyState[k.id]?.modelResponse">模型回复：{{ keyState[k.id]?.modelResponse }}</p>
+                        <p v-if="keyState[k.id]?.ttftMS">TTFT：{{ keyState[k.id]?.ttftMS }} ms</p>
                         <p v-if="keyState[k.id]?.metadata" class="break-all">metadata: <code class="font-mono text-2xs">{{ keyState[k.id]?.metadata }}</code></p>
                         <p>点击再次检查</p>
                       </div>
@@ -525,7 +543,7 @@ onMounted(load)
                 </div>
               </TableCell>
             </TableRow>
-            <TableEmpty v-if="!detail.keys?.length" :colspan="7">暂无 key</TableEmpty>
+            <TableEmpty v-if="!detail.keys?.length" :colspan="6">暂无 key</TableEmpty>
           </TableBody>
         </Table>
       </div>
@@ -602,7 +620,7 @@ onMounted(load)
                   v-model="mForm.default_check_model"
                   class="font-mono"
                   :disabled="!!mForm.check"
-                  placeholder="留空时 check 随机选 healthy 模型"
+                  placeholder="留空时随机选用 healthy 模型"
                 />
               </div>
             </div>

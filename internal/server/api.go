@@ -265,7 +265,7 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 	mux.HandleFunc("POST /api/admin/keys/{id}/check", admin(func(w http.ResponseWriter, r *http.Request) {
 		id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 		// check：同步执行返回结果，同时 chain 回灌规则引擎
-		status, err := a.CheckKey(r.Context(), id, true)
+		probe, err := a.CheckKeyWithProbe(r.Context(), id, true)
 		if err != nil {
 			jsonErr(w, http.StatusBadGateway, err.Error())
 			return
@@ -275,9 +275,12 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 			jsonErr(w, http.StatusNotFound, "key not found")
 			return
 		}
-		v := keyView(k)
-		v["check_status"] = status
-		jsonOK(w, v)
+		jsonOK(w, map[string]any{
+			"check_status":   probe.Status,
+			"metadata":       k.Metadata,
+			"model_response": probe.ModelResponse,
+			"ttft_ms":        probe.TTFTMS,
+		})
 	}))
 	mux.HandleFunc("POST /api/admin/keys/{id}/status", admin(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
@@ -565,17 +568,11 @@ func keyView(k *store.Key) map[string]any {
 		"provider":         k.Provider,
 		"api_key":          k.APIKey,
 		"email":            k.Email,
-		"password":         k.Password,
 		"status":           k.Status,
 		"rate_limit_count": k.RateLimitCount,
-		"created_at":       k.CreatedAt.UTC().Format(time.RFC3339),
-		"metadata":         k.Metadata,
 	}
 	if k.RateLimitUntil != nil {
 		v["rate_limit_until"] = k.RateLimitUntil.UTC().Format(time.RFC3339)
-	}
-	if k.FirstRequestAt != nil {
-		v["first_request_at"] = k.FirstRequestAt.UTC().Format(time.RFC3339)
 	}
 	if k.LastUsedAt != nil {
 		v["last_used_at"] = k.LastUsedAt.UTC().Format(time.RFC3339)
