@@ -26,12 +26,12 @@ const (
 )
 
 type entry struct {
-	status      string
-	until       time.Time     // unhealthy 到期时间
-	backoff     time.Duration // 当前退避档位
-	lastError   time.Time
-	lastSuccess time.Time
-	errorCount  int
+	status       string
+	until        time.Time // unhealthy 到期时间
+	backoffCount int
+	lastError    time.Time
+	lastSuccess  time.Time
+	errorCount   int
 
 	// TTFT 指数移动平均
 	avgTTFTMs int64
@@ -40,20 +40,21 @@ type entry struct {
 
 // Tracker 管理所有 (provider, native) 与 provider 级（native=""）的健康状态。
 type Tracker struct {
-	mu sync.Mutex
-	m  map[[2]string]*entry
+	mu   sync.Mutex
+	m    map[[2]string]*entry
+	save func(PersistedState)
 }
 
 // New 创建 Tracker。
 func New() *Tracker {
-	return &Tracker{m: map[[2]string]*entry{}}
+	return NewPersistent(nil, nil)
 }
 
 func (t *Tracker) get(provider, model string) *entry {
 	k := [2]string{provider, model}
 	e, ok := t.m[k]
 	if !ok {
-		e = &entry{status: Healthy}
+		e = &entry{status: Probing}
 		t.m[k] = e
 	}
 	return e
@@ -71,7 +72,13 @@ func (e *entry) resolve(now time.Time) string {
 func (t *Tracker) Status(provider, model string) string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return t.get(provider, model).resolve(time.Now())
+	e := t.get(provider, model)
+	before := e.status
+	status := e.resolve(time.Now())
+	if status != before {
+		t.persist(provider, model, e)
+	}
+	return status
 }
 
 // Routable 该 (provider, native) 是否参与路由：provider 与 native 都需可用。
@@ -79,8 +86,18 @@ func (t *Tracker) Routable(provider, model string) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	now := time.Now()
-	ps := t.get(provider, "").resolve(now)
-	ms := t.get(provider, model).resolve(now)
+	providerEntry := t.get(provider, "")
+	modelEntry := t.get(provider, model)
+	providerBefore := providerEntry.status
+	modelBefore := modelEntry.status
+	ps := providerEntry.resolve(now)
+	ms := modelEntry.resolve(now)
+	if ps != providerBefore {
+		t.persist(provider, "", providerEntry)
+	}
+	if ms != modelBefore {
+		t.persist(provider, model, modelEntry)
+	}
 	ok := func(s string) bool { return s == Healthy || s == Probing }
 	return ok(ps) && ok(ms)
 }
@@ -110,19 +127,19 @@ func (t *Tracker) markFailure(provider, model string, base time.Duration) {
 	e.lastError = now
 	switch st {
 	case Probing:
-		// probing 失败 → 2× 退避，上限 5min
-		e.backoff *= 2
-		if e.backoff > maxBackoff {
-			e.backoff = maxBackoff
-		}
-		if e.backoff == 0 {
-			e.backoff = base
-		}
+		e.backoffCount++
 	default:
-		e.backoff = base
+		if e.backoffCount == 0 {
+			e.backoffCount = 1
+		}
+	}
+	backoff := base * time.Duration(1<<min(e.backoffCount-1, 30))
+	if backoff > maxBackoff {
+		backoff = maxBackoff
 	}
 	e.status = Unhealthy
-	e.until = now.Add(e.backoff)
+	e.until = now.Add(backoff)
+	t.persist(provider, model, e)
 }
 
 // MarkSuccess 一次成功：probing/unhealthy → healthy，并记录 TTFT。
@@ -132,7 +149,8 @@ func (t *Tracker) MarkSuccess(provider, model string, ttftMs int64) {
 	now := time.Now()
 	for _, e := range []*entry{t.get(provider, ""), t.get(provider, model)} {
 		e.status = Healthy
-		e.backoff = 0
+		e.backoffCount = 0
+		e.until = time.Time{}
 		e.lastSuccess = now
 	}
 	if ttftMs > 0 {
@@ -145,6 +163,19 @@ func (t *Tracker) MarkSuccess(provider, model string, ttftMs int64) {
 			e.avgTTFTMs = (e.avgTTFTMs*7 + ttftMs*3) / 10
 		}
 	}
+	t.persist(provider, "", t.get(provider, ""))
+	t.persist(provider, model, t.get(provider, model))
+}
+
+func (t *Tracker) Ensure(provider, model string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	key := [2]string{provider, model}
+	if _, exists := t.m[key]; exists {
+		return
+	}
+	e := t.get(provider, model)
+	t.persist(provider, model, e)
 }
 
 // AvgTTFT 返回 (provider, native) 的平均 TTFT；无数据返回 (0, false)。
@@ -173,12 +204,16 @@ func (t *Tracker) Snapshots() []Snapshot {
 	now := time.Now()
 	var out []Snapshot
 	for k, e := range t.m {
+		before := e.status
 		s := Snapshot{
 			Provider:   k[0],
 			Model:      k[1],
 			Status:     e.resolve(now),
 			AvgTTFTMs:  e.avgTTFTMs,
 			ErrorCount: e.errorCount,
+		}
+		if s.Status != before {
+			t.persist(k[0], k[1], e)
 		}
 		if !e.lastError.IsZero() {
 			s.LastError = e.lastError.UTC().Format(time.RFC3339)
