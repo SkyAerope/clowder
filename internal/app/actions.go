@@ -38,9 +38,15 @@ type CheckProbeResult struct {
 	TTFTMS        int64
 }
 
-// RunActions 后台并行执行规则的 do 列表（不阻塞请求主线）。
+// RunActions 同步提交 mark_key，其他 do 动作后台并行执行。
 func (a *App) RunActions(actx *ActionContext) {
 	for _, act := range actx.Rule.Do {
+		if act.Kind == "mark_key" {
+			if err := a.runAction(act, actx); err != nil {
+				a.Log.Warn("rule action failed", "rule", actx.Rule.Name, "action", act.Kind, "error", err)
+			}
+			continue
+		}
 		act := act
 		a.actionsWG.Add(1)
 		go func() {
@@ -232,7 +238,7 @@ func (a *App) pickRandomHealthyModel(providerName string) string {
 	}
 	var natives []string
 	for _, native := range ps.Models {
-		if a.Health.Routable(providerName, native) {
+		if a.ModelRoutable(providerName, native) {
 			natives = append(natives, native)
 		}
 	}
