@@ -8,7 +8,9 @@ import (
 
 	"github.com/SkyAerope/clowder/internal/health"
 	"github.com/SkyAerope/clowder/internal/models"
+	"github.com/SkyAerope/clowder/internal/pool"
 	"github.com/SkyAerope/clowder/internal/provider"
+	"github.com/SkyAerope/clowder/internal/store"
 )
 
 func newRoutingTestApp(t *testing.T) *App {
@@ -27,9 +29,24 @@ model-b:
 	if err != nil {
 		t.Fatal(err)
 	}
+	st, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	p, err := pool.New(st, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, providerName := range []string{"one", "two"} {
+		if err := p.AddKey(&store.Key{Provider: providerName, APIKey: providerName + "-key", Status: store.KeyIdle}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	a := &App{
 		Mapping: mapping,
 		Health:  health.New(),
+		Pool:    p,
 		providers: map[string]*ProviderState{
 			"one": {
 				Manifest: &provider.Manifest{Name: "one", DisplayName: "One", Routing: provider.RoutingPref{Priority: 10, Weight: 1}},

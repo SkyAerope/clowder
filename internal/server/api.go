@@ -16,6 +16,7 @@ import (
 
 	"github.com/SkyAerope/clowder/internal/app"
 	"github.com/SkyAerope/clowder/internal/config"
+	"github.com/SkyAerope/clowder/internal/health"
 	"github.com/SkyAerope/clowder/internal/models"
 	"github.com/SkyAerope/clowder/internal/provider"
 	"github.com/SkyAerope/clowder/internal/rules"
@@ -155,6 +156,9 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 			status := "disabled"
 			if ps.Manifest.Enabled {
 				status = a.Health.Status(name, "")
+				if usable == 0 {
+					status = health.Unhealthy
+				}
 			}
 			out = append(out, pv{
 				Name: name, DisplayName: ps.Manifest.DisplayName,
@@ -193,7 +197,7 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 					edges = append(edges, edge{
 						Provider: name, ProviderDisplayName: ps.Manifest.DisplayName,
 						Native: native, TTFTMs: t, HasTTFT: has,
-						Healthy: a.Health.Routable(name, native),
+						Healthy: a.ModelRoutable(name, native),
 						Best:    name == bestProvider && native == bestNative,
 					})
 				}
@@ -216,7 +220,7 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 					Native:              native,
 					TTFTMs:              t,
 					HasTTFT:             has,
-					Healthy:             a.Health.Routable(name, native),
+					Healthy:             a.ModelRoutable(name, native),
 				})
 			}
 		}

@@ -26,7 +26,7 @@ func (a *App) CandidatesFor(canonical string) []Candidate {
 	var out []Candidate
 	for name, ps := range a.providers {
 		for _, native := range ps.NativesByCanonical[canonical] {
-			if a.Health.Routable(name, native) {
+			if a.ModelRoutable(name, native) {
 				out = append(out, a.candidate(name, ps, canonical, native))
 			}
 		}
@@ -49,7 +49,7 @@ func (a *App) CandidatesForProvider(canonical, providerName string) ([]Candidate
 	}
 	var out []Candidate
 	for _, native := range natives {
-		if a.Health.Routable(providerName, native) {
+		if a.ModelRoutable(providerName, native) {
 			out = append(out, a.candidate(providerName, ps, canonical, native))
 		}
 	}
@@ -69,7 +69,7 @@ func (a *App) CandidatesForNative(native string) ([]Candidate, bool) {
 		}
 		found = true
 		canonical := a.primaryCanonical(native)
-		if a.Health.Routable(providerName, native) {
+		if a.ModelRoutable(providerName, native) {
 			out = append(out, a.candidate(providerName, ps, canonical, native))
 		}
 	}
@@ -89,7 +89,7 @@ func (a *App) CandidatesForNativeProvider(native, providerName string) ([]Candid
 		return nil, false
 	}
 	canonical := a.primaryCanonical(native)
-	if !a.Health.Routable(providerName, native) {
+	if !a.ModelRoutable(providerName, native) {
 		return nil, true
 	}
 	return []Candidate{a.candidate(providerName, ps, canonical, native)}, true
@@ -102,6 +102,11 @@ func providerHasNative(ps *ProviderState, native string) bool {
 		}
 	}
 	return false
+}
+
+func (a *App) ModelRoutable(provider, native string) bool {
+	usable, _ := a.Pool.UsableCount(provider)
+	return usable > 0 && a.Health.Routable(provider, native)
 }
 
 func (a *App) primaryCanonical(native string) string {
@@ -133,7 +138,7 @@ func (a *App) CandidatesAuto() []Candidate {
 	for name, ps := range a.providers {
 		seen := map[string]bool{}
 		for _, native := range ps.Models {
-			if seen[native] || !a.Health.Routable(name, native) {
+			if seen[native] || !a.ModelRoutable(name, native) {
 				continue
 			}
 			seen[native] = true
@@ -191,7 +196,7 @@ func (a *App) CanonicalModels() []string {
 				continue
 			}
 			for _, native := range natives {
-				if a.Health.Routable(name, native) {
+				if a.ModelRoutable(name, native) {
 					seen[canonical] = true
 					out = append(out, canonical)
 					break
@@ -212,7 +217,7 @@ func (a *App) ModelNames() []string {
 	var out []string
 	for providerName, ps := range a.providers {
 		for _, native := range ps.Models {
-			if native == "" || seen[native] || !a.Health.Routable(providerName, native) {
+			if native == "" || seen[native] || !a.ModelRoutable(providerName, native) {
 				continue
 			}
 			seen[native] = true
@@ -223,7 +228,7 @@ func (a *App) ModelNames() []string {
 		available := false
 		for name, ps := range a.providers {
 			for _, native := range ps.NativesByCanonical[canonical] {
-				if a.Health.Routable(name, native) {
+				if a.ModelRoutable(name, native) {
 					available = true
 					break
 				}
