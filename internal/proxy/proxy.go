@@ -637,7 +637,7 @@ func (s *Server) deliver(w http.ResponseWriter, la *liveAttempt, reqModel string
 	// tee 旁路：仅当存在可能命中成功响应 body 的规则
 	var tee *bytes.Buffer
 	teeLimit := s.App.Cfg.Capture.ResponseBufferKB << 10
-	if s.App.Engine.NeedsSuccessBodyTee() {
+	if s.App.Engine.NeedsSuccessBodyTee() || s.App.Engine.NeedsResponseCaptureTee() {
 		tee = &bytes.Buffer{}
 	}
 	teeWrite := func(b []byte) {
@@ -675,6 +675,10 @@ func (s *Server) deliver(w http.ResponseWriter, la *liveAttempt, reqModel string
 				o.event.Transport = rules.TransportStreamCut
 				o.event.IsError = true
 				o.transportErr = err
+				if tee != nil {
+					o.respBody = append(o.respBody[:0], tee.Bytes()...)
+					o.event.Body = tee.String()
+				}
 				return o // 未写客户端，可重试
 			}
 		}
@@ -685,7 +689,8 @@ func (s *Server) deliver(w http.ResponseWriter, la *liveAttempt, reqModel string
 		o.delivered = true
 		o.firstByteSent = true
 		if tee != nil {
-			s.feedSuccessBodyAsync(o.event, cand, tee.String())
+			o.respBody = append(o.respBody[:0], tee.Bytes()...)
+			o.event.Body = tee.String()
 		}
 		return o
 	}
@@ -741,11 +746,16 @@ func (s *Server) deliver(w http.ResponseWriter, la *liveAttempt, reqModel string
 			o.event.Transport = rules.TransportStreamCut
 			o.event.IsError = true
 			o.transportErr = err
+			if tee != nil {
+				o.respBody = append(o.respBody[:0], tee.Bytes()...)
+				o.event.Body = tee.String()
+			}
 			return o
 		}
 	}
 	if tee != nil {
-		s.feedSuccessBodyAsync(o.event, cand, tee.String())
+		o.respBody = append(o.respBody[:0], tee.Bytes()...)
+		o.event.Body = tee.String()
 	}
 	return o
 }
@@ -759,24 +769,6 @@ func (s *Server) feedSuccessBody(o *attemptOutcome, body string) {
 		}
 		o.event.Body = body
 	}
-}
-
-// feedSuccessBodyAsync 流结束后异步把成功响应 body 喂给引擎（route 忽略，只执行 do）。
-func (s *Server) feedSuccessBodyAsync(base *rules.Event, cand app.Candidate, body string) {
-	ev := *base
-	ev.Body = body
-	ev.IsError = false
-	go func() {
-		r := s.App.Engine.Match(&ev)
-		if r == nil {
-			return
-		}
-		s.App.RunActions(&app.ActionContext{
-			Rule: r, Event: &ev,
-			Provider: cand.Provider, Model: cand.Canonical, Native: cand.Native,
-			RespBody: body, StatusCode: ev.StatusCode,
-		})
-	}()
 }
 
 // rewriteModelField 把上游响应里的 model 字段改回客户端请求名（不暴露 native 名）。
