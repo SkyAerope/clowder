@@ -5,7 +5,14 @@ import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
-const props = defineProps<{ status: string; reason?: string }>()
+const props = defineProps<{
+  status: string
+  label?: string
+  reason?: string
+  details?: readonly string[]
+}>()
+
+const tooltipLines = computed(() => props.details?.filter(Boolean) ?? (props.reason ? [props.reason] : []))
 
 const labels: Record<string, string> = {
   active: '激活',
@@ -40,8 +47,8 @@ const cls = computed(() => {
 
 <template>
   <Badge variant="outline" :class="cn(cls)">
-    {{ labels[status] ?? status }}
-    <Tooltip v-if="reason">
+    {{ label ?? labels[status] ?? status }}
+    <Tooltip v-if="tooltipLines.length">
       <TooltipTrigger as-child>
         <span
           tabindex="0"
@@ -51,7 +58,11 @@ const cls = computed(() => {
           <Info class="size-3" />
         </span>
       </TooltipTrigger>
-      <TooltipContent class="pointer-events-none text-xs">{{ reason }}</TooltipContent>
+      <TooltipContent class="pointer-events-none text-xs">
+        <div class="flex flex-col gap-1">
+          <p v-for="line in tooltipLines" :key="line">{{ line }}</p>
+        </div>
+      </TooltipContent>
     </Tooltip>
   </Badge>
 </template>
