@@ -168,10 +168,14 @@ func cmdStatus(args []string) error {
 	}
 	defer a.Close()
 	fmt.Println("\nproviders:")
-	for name, ps := range a.Providers() {
+	for name, ps := range a.ConfiguredProviders() {
 		usable, total := a.Pool.UsableCount(name)
-		fmt.Printf("  %-20s enabled=%v keys=%d/%d models=%d\n",
-			name, ps.Manifest.Enabled, usable, total, len(ps.Models))
+		streaming := cfg.Routing.UpstreamStreaming
+		if ps.Manifest.UpstreamStreaming != nil {
+			streaming = *ps.Manifest.UpstreamStreaming
+		}
+		fmt.Printf("  %-20s enabled=%v streaming=%v keys=%d/%d models=%d\n",
+			name, ps.Manifest.Enabled, streaming, usable, total, len(ps.Models))
 	}
 	return nil
 }
