@@ -31,6 +31,46 @@ rules:
 	}
 }
 
+func TestEngineNeedsResponseCaptureTeeOnlyForEnabledRulesCapturingBody(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+		want bool
+	}{
+		{
+			name: "explicit response body",
+			yaml: `rules: [{ name: capture, do: [{ capture: { fields: [response_body] } }] }]`,
+			want: true,
+		},
+		{
+			name: "empty fields captures all",
+			yaml: `rules: [{ name: capture, do: [{ capture: {} }] }]`,
+			want: true,
+		},
+		{
+			name: "response headers only",
+			yaml: `rules: [{ name: capture, do: [{ capture: { fields: [response_headers] } }] }]`,
+			want: false,
+		},
+		{
+			name: "disabled response body capture",
+			yaml: `rules: [{ name: capture, enabled: false, do: [{ capture: { fields: [response_body] } }] }]`,
+			want: false,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			rules, err := ParseRules([]byte(test.yaml), SourceUserFile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := NewEngine(rules).NeedsResponseCaptureTee(); got != test.want {
+				t.Fatalf("NeedsResponseCaptureTee() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
 func engineWith(t *testing.T, extraYAML string) *Engine {
 	t.Helper()
 	all := BuiltinRules()

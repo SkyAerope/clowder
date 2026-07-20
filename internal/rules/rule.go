@@ -464,6 +464,24 @@ func (r *Rule) NeedsBody() bool {
 	return r.When.BodyContains != "" || r.When.BodyRegex != nil
 }
 
+// CapturesField 报告规则是否有 capture 动作会保存指定字段。
+func (r *Rule) CapturesField(field string) bool {
+	for _, action := range r.Do {
+		if action.Kind != "capture" {
+			continue
+		}
+		if len(action.Fields) == 0 {
+			return true
+		}
+		for _, captured := range action.Fields {
+			if captured == field {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func validStatusPattern(s string) bool {
 	if s == "4xx" || s == "5xx" || s == "2xx" || s == "3xx" || s == "1xx" {
 		return true

@@ -35,8 +35,9 @@ type Event struct {
 type Engine struct {
 	rules []*Rule
 	// 预计算：是否存在可能命中成功响应且需要 body 的规则（tee 旁路开关）
-	successBodyRules bool
-	minTTFT          int64
+	successBodyRules     bool
+	responseCaptureRules bool
+	minTTFT              int64
 }
 
 // NewEngine 组装引擎；规则在加载时已按来源打好 Source。
@@ -48,6 +49,9 @@ func NewEngine(all []*Rule) *Engine {
 		}
 		if r.CanMatchSuccess() && r.NeedsBody() {
 			e.successBodyRules = true
+		}
+		if r.When.Type() == "upstream" && r.CapturesField("response_body") {
+			e.responseCaptureRules = true
 		}
 		if r.When.TTFTOverMs > 0 && (e.minTTFT == 0 || r.When.TTFTOverMs < e.minTTFT) {
 			e.minTTFT = r.When.TTFTOverMs
@@ -61,6 +65,9 @@ func (e *Engine) Rules() []*Rule { return e.rules }
 
 // NeedsSuccessBodyTee 是否需要对成功响应做 tee 镜像（无相关规则时零开销）。
 func (e *Engine) NeedsSuccessBodyTee() bool { return e.successBodyRules }
+
+// NeedsResponseCaptureTee 是否有启用的上游规则要求抓取响应体。
+func (e *Engine) NeedsResponseCaptureTee() bool { return e.responseCaptureRules }
 
 // MinTTFTThreshold 所有规则中最小的 ttft_over_ms（proxy 用它设定时器）；0 = 无 TTFT 规则。
 func (e *Engine) MinTTFTThreshold() int64 { return e.minTTFT }
