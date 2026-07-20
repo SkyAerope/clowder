@@ -125,17 +125,26 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 	// ---- 公开看板数据（绝不返回 key/email/password）----
 	mux.HandleFunc("GET /api/providers", public(func(w http.ResponseWriter, r *http.Request) {
 		type pv struct {
-			Name         string `json:"name"`
-			DisplayName  string `json:"display_name"`
-			Status       string `json:"status"`
-			StatusReason string `json:"status_reason,omitempty"`
-			ActiveKeys   int    `json:"active_keys"`
-			TotalKeys    int    `json:"total_keys"`
-			AvgTTFTMs    int64  `json:"avg_ttft_ms"`
-			Priority     int    `json:"priority"`
-			ModelCount   int    `json:"model_count"`
+			Name          string `json:"name"`
+			DisplayName   string `json:"display_name"`
+			Status        string `json:"status"`
+			StatusReason  string `json:"status_reason,omitempty"`
+			LastRule      string `json:"last_rule,omitempty"`
+			LastErrorAt   string `json:"last_error_at,omitempty"`
+			LastSuccessAt string `json:"last_success_at,omitempty"`
+			ActiveKeys    int    `json:"active_keys"`
+			TotalKeys     int    `json:"total_keys"`
+			AvgTTFTMs     int64  `json:"avg_ttft_ms"`
+			Priority      int    `json:"priority"`
+			ModelCount    int    `json:"model_count"`
 		}
 		var out []pv
+		providerHealth := map[string]health.Snapshot{}
+		for _, snapshot := range a.Health.Snapshots() {
+			if snapshot.Model == "" {
+				providerHealth[snapshot.Provider] = snapshot
+			}
+		}
 		includeStatusReason := a.Cfg.Dashboard.Admin && validSession(r)
 		for name, ps := range a.ConfiguredProviders() {
 			usable, total := a.Pool.UsableCount(name)
@@ -175,10 +184,13 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 			if !includeStatusReason {
 				statusReason = ""
 			}
+			snapshot := providerHealth[name]
 			out = append(out, pv{
 				Name: name, DisplayName: ps.Manifest.DisplayName,
 				Status: status, StatusReason: statusReason,
-				ActiveKeys: usable, TotalKeys: total,
+				LastRule: snapshot.LastRule, LastErrorAt: snapshot.LastError,
+				LastSuccessAt: snapshot.LastSuccess,
+				ActiveKeys:    usable, TotalKeys: total,
 				AvgTTFTMs: avg, Priority: ps.Manifest.Routing.Priority,
 				ModelCount: len(ps.Models),
 			})
@@ -372,7 +384,7 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 		jsonOK(w, map[string]any{
 			"manifest":               manifestView(ps),
 			"manifest_yaml":          readManifestRaw(ps),
-			"models":                 ps.Models,
+			"models":                 append([]string{}, ps.Models...),
 			"keys":                   keyViews(a.Pool.Keys(name)),
 			"last_register_at":       timeOrNull(ps.LastRegisterAt),
 			"last_register_duration": ps.LastRegisterDuration.Milliseconds(),
