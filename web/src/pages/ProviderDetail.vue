@@ -31,7 +31,7 @@ import {
   DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
-import { Plus, Stethoscope, Check, X, ArrowLeft, FileCog, Save, MoreVertical, Trash2, CircleCheck, Ban, CircleDashed, SlidersHorizontal, Info } from 'lucide-vue-next'
+import { Plus, Stethoscope, Check, X, ArrowLeft, FileCog, Save, MoreVertical, Trash2, CircleCheck, Ban, CircleDashed, SlidersHorizontal } from 'lucide-vue-next'
 import { RouterLink } from 'vue-router'
 
 const route = useRoute()
@@ -432,18 +432,12 @@ onMounted(load)
                 <span v-else class="text-muted-foreground">—</span>
               </TableCell>
               <TableCell>
-                <Tooltip v-if="k.status === 'rate_limited'">
-                  <TooltipTrigger as-child>
-                    <Badge variant="outline" class="border-transparent bg-warning/20 text-warning">
-                      限流 <Info class="size-3" />
-                    </Badge>
-                  </TooltipTrigger>
-                  <TooltipContent class="text-xs">
-                    <p>限流 {{ k.rate_limit_count }} 次</p>
-                    <p>恢复于 {{ fmtTime(k.rate_limit_until) }}</p>
-                  </TooltipContent>
-                </Tooltip>
-                <StatusBadge v-else :status="k.status" />
+                <StatusBadge
+                  :status="k.status"
+                  :reason="k.status === 'rate_limited'
+                    ? `限流 ${k.rate_limit_count} 次，恢复于 ${fmtTime(k.rate_limit_until)}`
+                    : undefined"
+                />
               </TableCell>
               <TableCell class="text-xs">{{ fmtTime(k.last_used_at) }}</TableCell>
               <TableCell>
