@@ -431,6 +431,7 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 		}
 		jsonOK(w, map[string]any{"models": models})
 	}))
+	registerModelCheckAPI(mux, admin, a)
 
 	mux.HandleFunc("GET /api/admin/requests", admin(func(w http.ResponseWriter, r *http.Request) {
 		limit, offset := queryInt(r, "limit", 50), queryInt(r, "offset", 0)
