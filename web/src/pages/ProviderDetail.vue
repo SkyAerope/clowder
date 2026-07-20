@@ -170,12 +170,9 @@ async function checkAll() {
   checking.value = true
   let ok = 0, fail = 0
   for (const k of detail.value?.keys ?? []) {
-    try {
-      const resp = await api.post<{ check_status: string }>(`/api/admin/keys/${k.id}/check`)
-      if (resp.check_status === 'active') { ok++ } else { fail++ }
-    } catch {
-      fail++
-    }
+    await keyAction(k, 'check')
+    if (keyState.value[k.id]?.result === 'success') ok++
+    else fail++
   }
   if (fail > 0) {
     toast.warning(`check 完成：成功 ${ok}，失败 ${fail}`)
@@ -358,9 +355,6 @@ onMounted(load)
         />
       </div>
       <div class="flex gap-2">
-        <Button v-if="detail.manifest.has_check" variant="outline" size="sm" :disabled="checking" @click="checkAll">
-          <Stethoscope class="size-4" :class="checking && 'animate-pulse'" /> 全部 check
-        </Button>
         <Button variant="outline" size="sm" @click="openManifest">
           <FileCog class="size-4" /> 修改 manifest
         </Button>
@@ -407,12 +401,17 @@ onMounted(load)
     </Card>
 
     <Card :title="`Keys (${detail.keys?.length ?? 0})`">
+      <template #action>
+        <Button variant="outline" size="sm" :disabled="checking" @click="checkAll">
+          <Stethoscope class="size-4" :class="checking && 'animate-pulse'" /> 全部 check
+        </Button>
+      </template>
       <div class="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>ID</TableHead><TableHead>Key</TableHead><TableHead>Email</TableHead>
-              <TableHead>状态</TableHead><TableHead>最后使用</TableHead>
+              <TableHead>Metadata</TableHead><TableHead>状态</TableHead><TableHead>最后使用</TableHead>
               <TableHead class="text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
@@ -431,6 +430,9 @@ onMounted(load)
                   <CopyButton :value="k.email" label="Email" />
                 </div>
                 <span v-else class="text-muted-foreground">—</span>
+              </TableCell>
+              <TableCell>
+                <span class="block max-w-64 truncate font-mono text-xs" :title="k.metadata">{{ k.metadata || '—' }}</span>
               </TableCell>
               <TableCell>
                 <StatusBadge
@@ -545,7 +547,7 @@ onMounted(load)
                 </div>
               </TableCell>
             </TableRow>
-            <TableEmpty v-if="!detail.keys?.length" :colspan="6">暂无 key</TableEmpty>
+            <TableEmpty v-if="!detail.keys?.length" :colspan="7">暂无 key</TableEmpty>
           </TableBody>
         </Table>
       </div>

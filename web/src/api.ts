@@ -96,6 +96,7 @@ export interface KeyRow {
   provider: string
   api_key: string
   email: string
+  metadata?: string
   status: string
   rate_limit_count: number
   rate_limit_until?: string
