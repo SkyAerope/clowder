@@ -121,7 +121,7 @@ export function rawToEdit(raw: unknown): EditRule {
     add('body', when.body_contains); add('body', when.body_regex, true)
     if (when.transport === true) add('transport', 'true'); else add('transport', when.transport)
     add('ttft_over_ms', when.ttft_over_ms)
-    if (when.error === true) add('error', '')
+    if (when.error === true) rule.whenClauses.push({ field: 'error', text: '', regex: false })
   }
   const scope = record(when.scope)
   rule.scope_provider = text(scope.provider)
