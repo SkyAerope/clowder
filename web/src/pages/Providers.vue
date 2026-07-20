@@ -2,7 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, type Provider } from '../api'
-import StatusBadge from '../components/StatusBadge.vue'
+import ProviderStatusBadge from '../components/ProviderStatusBadge.vue'
 import TableSkeleton from '../components/TableSkeleton.vue'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -64,7 +64,7 @@ onMounted(load)
         <TableBody v-else>
           <TableRow v-for="p in providers" :key="p.name" class="cursor-pointer" @click="open(p)">
             <TableCell class="font-medium">{{ p.display_name || p.name }}</TableCell>
-            <TableCell><StatusBadge :status="p.status" :reason="p.status_reason" /></TableCell>
+            <TableCell><ProviderStatusBadge :provider="p" /></TableCell>
             <TableCell>{{ p.active_keys }}/{{ p.total_keys }}</TableCell>
             <TableCell>{{ p.model_count }}</TableCell>
             <TableCell>{{ p.avg_ttft_ms > 0 ? p.avg_ttft_ms + 'ms' : '—' }}</TableCell>

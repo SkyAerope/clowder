@@ -2,7 +2,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { api, session, type Provider, type ModelEdge, type Candidate } from '../api'
 import Card from '../components/Card.vue'
-import StatusBadge from '../components/StatusBadge.vue'
+import ProviderStatusBadge from '../components/ProviderStatusBadge.vue'
 import RoutingGraph from '../components/RoutingGraph.vue'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -88,7 +88,7 @@ onUnmounted(() => clearInterval(timer))
         >
           <div class="flex items-center justify-between">
             <span class="font-medium">{{ p.display_name || p.name }}</span>
-            <StatusBadge :status="p.status" :reason="p.status_reason" />
+            <ProviderStatusBadge :provider="p" />
           </div>
           <div class="grid grid-cols-3 gap-2 text-sm">
             <div>
