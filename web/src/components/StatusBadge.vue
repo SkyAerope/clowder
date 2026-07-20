@@ -20,7 +20,7 @@ const labels: Record<string, string> = {
   rate_limited: '限流',
   invalid: '无效',
   healthy: '健康',
-  probing: '探测中',
+  probing: '待测试',
   unhealthy: '不健康',
   disabled: '禁用',
 }
