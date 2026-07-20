@@ -395,15 +395,17 @@ onMounted(load)
 
     <Card :title="`模型 (${detail.models?.length ?? 0})`">
       <ModelHealthTable
+        :provider="name"
         :models="detail.models"
         :snapshots="healthSnapshots"
+        @checked="load"
       />
     </Card>
 
     <Card :title="`Keys (${detail.keys?.length ?? 0})`">
       <template #action>
         <Button variant="outline" size="sm" :disabled="checking" @click="checkAll">
-          <Stethoscope class="size-4" :class="checking && 'animate-pulse'" /> 全部 check
+          <Stethoscope class="size-4" :class="checking && 'animate-pulse'" /> 全部检查
         </Button>
       </template>
       <div class="overflow-x-auto">

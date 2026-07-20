@@ -32,3 +32,19 @@ test('renders key metadata and bulk check reuses each row check action', async (
   assert.match(checkAll, /await keyAction\(k, 'check'\)/)
   assert.doesNotMatch(checkAll, /api\.post/)
 })
+
+test('model health table exposes model checks and only offers returned rules for application', async () => {
+  const source = await readFile(new URL('../src/components/ModelHealthTable.vue', import.meta.url), 'utf8')
+
+  assert.match(source, /<TableHead class="text-right">操作<\/TableHead>/)
+  assert.match(source, /\/api\/admin\/providers\/\$\{props\.provider\}\/check-model/)
+  assert.match(source, /check-model`, \{ model \}\)/)
+  assert.match(source, /命中规则：\{\{ checkStates\[row\.model\]\?\.ruleName \}\}/)
+  assert.match(source, /应用该规则/)
+  assert.match(source, /v-if="checkStates\[row\.model\]\?\.ruleName"/)
+  assert.match(source, /<button[\s\S]*?type="button"[\s\S]*?\[应用该规则\][\s\S]*?<\/button>/)
+  assert.match(source, /max-w-\[min\(32rem,calc\(100vw-2rem\)\)\]/)
+  assert.match(source, /v-if="checkStates\[row\.model\]\?\.ruleName" class="break-words"/)
+  assert.doesNotMatch(source, /<span class="truncate">命中规则：/)
+  assert.match(source, /:colspan="5"/)
+})
