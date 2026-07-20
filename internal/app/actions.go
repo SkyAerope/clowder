@@ -1,14 +1,9 @@
 package app
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
-	"io"
 	"math/rand"
-	"net/http"
 	"strings"
 	"time"
 
@@ -36,6 +31,8 @@ type CheckProbeResult struct {
 	Status        string
 	ModelResponse string
 	TTFTMS        int64
+	StatusCode    int
+	ResponseBody  string
 }
 
 // RunActions 同步提交 mark_key，其他 do 动作后台并行执行。
@@ -246,84 +243,6 @@ func (a *App) pickRandomHealthyModel(providerName string) string {
 		return ""
 	}
 	return natives[rand.Intn(len(natives))]
-}
-
-func (a *App) checkViaChat(ctx context.Context, baseURL, apiKey, model string, timeout time.Duration) (CheckProbeResult, error) {
-	url := JoinURL(baseURL, "/v1/chat/completions")
-	body := map[string]any{
-		"model":      model,
-		"messages":   []map[string]any{{"role": "user", "content": "回答yes"}},
-		"max_tokens": 16,
-		"stream":     true,
-	}
-	up, err := json.Marshal(body)
-	if err != nil {
-		return CheckProbeResult{}, err
-	}
-	cctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	req, err := http.NewRequestWithContext(cctx, http.MethodPost, url, bytes.NewReader(up))
-	if err != nil {
-		return CheckProbeResult{}, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	start := time.Now()
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return CheckProbeResult{Status: "error"}, err
-	}
-	defer resp.Body.Close()
-
-	status := "error"
-	switch {
-	case resp.StatusCode >= 200 && resp.StatusCode < 300:
-		status = "active"
-	case resp.StatusCode == 401 || resp.StatusCode == 403:
-		status = "invalid"
-	case resp.StatusCode == 429:
-		status = "rate_limited"
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return CheckProbeResult{Status: status}, nil
-	}
-
-	var ttftMS int64
-	var response strings.Builder
-	scanner := bufio.NewScanner(io.LimitReader(resp.Body, 1<<20))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if !strings.HasPrefix(line, "data:") {
-			continue
-		}
-		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-		if data == "[DONE]" {
-			break
-		}
-		var chunk struct {
-			Choices []struct {
-				Delta struct {
-					Content string `json:"content"`
-				} `json:"delta"`
-			} `json:"choices"`
-		}
-		if err := json.Unmarshal([]byte(data), &chunk); err != nil || len(chunk.Choices) == 0 {
-			continue
-		}
-		content := chunk.Choices[0].Delta.Content
-		if content == "" {
-			continue
-		}
-		if response.Len() == 0 {
-			// TTFT starts when the request is sent and ends at the first content token.
-			ttftMS = time.Since(start).Milliseconds()
-		}
-		response.WriteString(content)
-	}
-	if err := scanner.Err(); err != nil {
-		return CheckProbeResult{Status: "error"}, fmt.Errorf("read check response: %w", err)
-	}
-	return CheckProbeResult{Status: status, ModelResponse: response.String(), TTFTMS: ttftMS}, nil
 }
 
 // CheckKeys 对某 provider（空 = 全部）的所有 key 逐个跑 check。
