@@ -9,7 +9,7 @@ func TestNativeHealthIsIsolated(t *testing.T) {
 	tracker := New()
 	tracker.MarkSuccess("provider", "native-a", 120)
 	tracker.MarkSuccess("provider", "native-b", 240)
-	tracker.MarkModelDown("provider", "native-a")
+	tracker.MarkModelDown("provider", "native-a", "test-rule")
 
 	if tracker.Routable("provider", "native-a") {
 		t.Fatal("failed native should not be routable")
@@ -79,3 +79,37 @@ func TestNewProvider_defaults_to_probing(t *testing.T) {
 		t.Fatalf("status = %q, want %q", got, Probing)
 	}
 }
+
+func TestFailureSnapshotIncludesTriggerRule(t *testing.T) {
+	// Given
+	tracker := New()
+
+	// When
+	tracker.MarkModelDown("provider", "native", "model-gone")
+
+	// Then
+	snapshots := tracker.Snapshots()
+	if len(snapshots) != 1 || snapshots[0].LastRule != "model-gone" || snapshots[0].LastError == "" {
+		t.Fatalf("snapshot = %#v", snapshots)
+	}
+}
+
+func TestRestorePreservesTriggerRule(t *testing.T) {
+	// Given
+	lastError := time.Now().Add(-time.Minute)
+	tracker := NewPersistent([]PersistedState{{
+		Provider: "provider", Model: "native", Status: Unhealthy,
+		UnhealthyUntil: ptrTime(time.Now().Add(time.Minute)), LastErrorAt: &lastError,
+		LastRule: "model-gone",
+	}}, nil)
+
+	// When
+	snapshots := tracker.Snapshots()
+
+	// Then
+	if len(snapshots) != 1 || snapshots[0].LastRule != "model-gone" {
+		t.Fatalf("snapshot = %#v", snapshots)
+	}
+}
+
+func ptrTime(value time.Time) *time.Time { return &value }

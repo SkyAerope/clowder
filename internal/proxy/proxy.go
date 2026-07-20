@@ -154,7 +154,7 @@ func (s *Server) runChain(w http.ResponseWriter, r *http.Request, chain *chainSt
 		key, err := s.App.Pool.Pick(cand.Provider, usedKeys)
 		if err != nil {
 			// 全 key 失败 / 无可用 key → 当前 native 不可路由，推进候选。
-			s.App.Health.MarkModelDown(cand.Provider, cand.Native)
+			s.App.Health.MarkModelDown(cand.Provider, cand.Native, "no-usable-key")
 			s.App.Log.Warn("no usable key, marking model down", "provider", cand.Provider, "model", cand.Native)
 			provIdx = nextCandidateIndex(candidates, provIdx, auto, attemptedProviders)
 			usedKeys = map[int64]bool{}

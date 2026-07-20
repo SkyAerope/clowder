@@ -85,10 +85,10 @@ func (a *App) runAction(act rules.Action, actx *ActionContext) error {
 		return a.Pool.BackoffKey(actx.KeyID)
 	case "mark_model_unhealthy":
 		if actx.Native != "" {
-			a.Health.MarkModelDown(actx.Provider, actx.Native)
+			a.Health.MarkModelDown(actx.Provider, actx.Native, actx.Rule.Name)
 		}
 	case "mark_provider_unhealthy":
-		a.Health.MarkProviderDown(actx.Provider)
+		a.Health.MarkProviderDown(actx.Provider, actx.Rule.Name)
 	case "check_key":
 		if actx.KeyID == 0 {
 			return nil

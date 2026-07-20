@@ -32,6 +32,7 @@ type entry struct {
 	lastError    time.Time
 	lastSuccess  time.Time
 	errorCount   int
+	lastRule     string
 
 	// TTFT 指数移动平均
 	avgTTFTMs int64
@@ -103,21 +104,21 @@ func (t *Tracker) Routable(provider, model string) bool {
 }
 
 // MarkConnFailure provider 级基础设施故障（DNS / 拒连 / 证书）。
-func (t *Tracker) MarkConnFailure(provider string) {
-	t.markFailure(provider, "", connFailDuration)
+func (t *Tracker) MarkConnFailure(provider, rule string) {
+	t.markFailure(provider, "", connFailDuration, rule)
 }
 
 // MarkModelDown 标记 provider 下的原生模型故障。
-func (t *Tracker) MarkModelDown(provider, model string) {
-	t.markFailure(provider, model, allKeysFailDuration)
+func (t *Tracker) MarkModelDown(provider, model, rule string) {
+	t.markFailure(provider, model, allKeysFailDuration, rule)
 }
 
 // MarkProviderDown 显式标记 provider 级 unhealthy（规则动作）。
-func (t *Tracker) MarkProviderDown(provider string) {
-	t.markFailure(provider, "", connFailDuration)
+func (t *Tracker) MarkProviderDown(provider, rule string) {
+	t.markFailure(provider, "", connFailDuration, rule)
 }
 
-func (t *Tracker) markFailure(provider, model string, base time.Duration) {
+func (t *Tracker) markFailure(provider, model string, base time.Duration, rule string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	now := time.Now()
@@ -125,6 +126,7 @@ func (t *Tracker) markFailure(provider, model string, base time.Duration) {
 	st := e.resolve(now)
 	e.errorCount++
 	e.lastError = now
+	e.lastRule = rule
 	switch st {
 	case Probing:
 		e.backoffCount++
@@ -152,6 +154,7 @@ func (t *Tracker) MarkSuccess(provider, model string, ttftMs int64) {
 		e.backoffCount = 0
 		e.until = time.Time{}
 		e.lastSuccess = now
+		e.lastRule = ""
 	}
 	if ttftMs > 0 {
 		e := t.get(provider, model)
@@ -195,6 +198,7 @@ type Snapshot struct {
 	ErrorCount  int    `json:"error_count"`
 	LastError   string `json:"last_error_at,omitempty"`
 	LastSuccess string `json:"last_success_at,omitempty"`
+	LastRule    string `json:"last_rule,omitempty"`
 }
 
 // Snapshots 导出全部健康状态。
@@ -211,6 +215,7 @@ func (t *Tracker) Snapshots() []Snapshot {
 			Status:     e.resolve(now),
 			AvgTTFTMs:  e.avgTTFTMs,
 			ErrorCount: e.errorCount,
+			LastRule:   e.lastRule,
 		}
 		if s.Status != before {
 			t.persist(k[0], k[1], e)

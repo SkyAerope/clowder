@@ -90,7 +90,7 @@ func TestCandidatesForRoutesSameNameCanonicalToNative(t *testing.T) {
 
 func TestCandidatesUseNativeHealth(t *testing.T) {
 	a := newRoutingTestApp(t)
-	a.Health.MarkModelDown("one", "native-a")
+	a.Health.MarkModelDown("one", "native-a", "test-rule")
 
 	candidates := a.CandidatesFor("model-a")
 	if len(candidates) != 2 {
