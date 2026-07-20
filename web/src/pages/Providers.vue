@@ -64,7 +64,7 @@ onMounted(load)
         <TableBody v-else>
           <TableRow v-for="p in providers" :key="p.name" class="cursor-pointer" @click="open(p)">
             <TableCell class="font-medium">{{ p.display_name || p.name }}</TableCell>
-            <TableCell><StatusBadge :status="p.status" /></TableCell>
+            <TableCell><StatusBadge :status="p.status" :reason="p.status_reason" /></TableCell>
             <TableCell>{{ p.active_keys }}/{{ p.total_keys }}</TableCell>
             <TableCell>{{ p.model_count }}</TableCell>
             <TableCell>{{ p.avg_ttft_ms > 0 ? p.avg_ttft_ms + 'ms' : '—' }}</TableCell>

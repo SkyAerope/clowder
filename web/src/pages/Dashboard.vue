@@ -88,7 +88,7 @@ onUnmounted(() => clearInterval(timer))
         >
           <div class="flex items-center justify-between">
             <span class="font-medium">{{ p.display_name || p.name }}</span>
-            <StatusBadge :status="p.status" />
+            <StatusBadge :status="p.status" :reason="p.status_reason" />
           </div>
           <div class="grid grid-cols-3 gap-2 text-sm">
             <div>

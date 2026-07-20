@@ -60,6 +60,7 @@ export interface Provider {
   name: string
   display_name: string
   status: string
+  status_reason?: string
   active_keys: number
   total_keys: number
   avg_ttft_ms: number
