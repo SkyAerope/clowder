@@ -47,6 +47,8 @@ interface Detail {
   last_register_error?: string
 }
 
+type DetailResponse = Omit<Detail, 'models'> & { models: string[] | null }
+
 const detail = ref<Detail | null>(null)
 const healthSnapshots = ref<HealthSnapshot[]>([])
 const registering = ref(false)
@@ -66,10 +68,10 @@ function ensureKeyState(id: number) {
 
 async function load() {
   const [providerDetail, snapshots] = await Promise.all([
-    api.get<Detail>(`/api/admin/providers/${name}`),
+    api.get<DetailResponse>(`/api/admin/providers/${name}`),
     api.get<HealthSnapshot[]>('/api/health'),
   ])
-  detail.value = providerDetail
+  detail.value = { ...providerDetail, models: providerDetail.models ?? [] }
   healthSnapshots.value = snapshots.filter((snapshot) => snapshot.provider === name)
 }
 
@@ -401,7 +403,6 @@ onMounted(load)
       <ModelHealthTable
         :models="detail.models"
         :snapshots="healthSnapshots"
-        :provider-enabled="detail.manifest.enabled"
       />
     </Card>
 
