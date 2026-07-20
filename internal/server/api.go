@@ -594,6 +594,7 @@ func keyView(k *store.Key) map[string]any {
 		"provider":         k.Provider,
 		"api_key":          k.APIKey,
 		"email":            k.Email,
+		"metadata":         k.Metadata,
 		"status":           k.Status,
 		"rate_limit_count": k.RateLimitCount,
 	}
