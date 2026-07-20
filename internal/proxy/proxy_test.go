@@ -348,12 +348,30 @@ models: [disabled-model]
 	if err := os.WriteFile(filepath.Join(disabledDir, "manifest.yaml"), []byte(disabledManifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	emptyDir := filepath.Join(os.Getenv("CLOWDER_HOME"), "providers", "empty")
+	if err := os.MkdirAll(emptyDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	emptyManifest := fmt.Sprintf(`
+name: empty
+display_name: Empty Provider
+base_url: %s
+enabled: true
+models: []
+`, up.URL)
+	if err := os.WriteFile(filepath.Join(emptyDir, "manifest.yaml"), []byte(emptyManifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := a.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := a.ImportKeys("empty", []string{"empty-key"}); err != nil {
 		t.Fatal(err)
 	}
 	if a.ConfiguredProvider("disabled") == nil || a.Provider("disabled") != nil {
 		t.Fatal("disabled provider must be configured but excluded from runtime routing")
 	}
+	a.Cfg.Dashboard.Admin = true
 	h := server.New(a).Handler()
 
 	req := httptest.NewRequest("GET", "/v1/models", nil)
@@ -457,28 +475,66 @@ models: [disabled-model]
 		t.Fatalf("GET /api/providers status %d: %s", providersW.Code, providersW.Body.String())
 	}
 	var providers []struct {
-		Name       string `json:"name"`
-		Status     string `json:"status"`
-		ActiveKeys int    `json:"active_keys"`
+		Name         string  `json:"name"`
+		Status       string  `json:"status"`
+		StatusReason *string `json:"status_reason"`
+		ActiveKeys   int     `json:"active_keys"`
+		ModelCount   int     `json:"model_count"`
 	}
 	if err := json.Unmarshal(providersW.Body.Bytes(), &providers); err != nil {
 		t.Fatal(err)
 	}
 	foundDisabled := false
 	foundUnavailable := false
+	foundEmpty := false
 	for _, provider := range providers {
+		if provider.StatusReason != nil {
+			t.Fatalf("anonymous provider response exposed unhealthy reason: %s", providersW.Body.String())
+		}
 		if provider.Name == "disabled" {
 			foundDisabled = provider.Status == "disabled"
 		}
 		if provider.Name == "mock" && provider.ActiveKeys == 0 {
 			foundUnavailable = provider.Status == "unhealthy"
 		}
+		if provider.Name == "empty" && provider.ModelCount == 0 {
+			foundEmpty = provider.Status == "unhealthy"
+		}
 	}
 	if !foundDisabled {
 		t.Fatalf("disabled provider missing from /api/providers: %s", providersW.Body.String())
 	}
 	if !foundUnavailable {
-		t.Fatalf("enabled provider without usable keys must be unhealthy: %s", providersW.Body.String())
+		t.Fatalf("enabled provider without usable keys must expose its unhealthy reason: %s", providersW.Body.String())
+	}
+	if !foundEmpty {
+		t.Fatalf("enabled provider without models must be unhealthy: %s", providersW.Body.String())
+	}
+
+	loginReq := httptest.NewRequest("POST", "/api/login", strings.NewReader(`{"admin_key":"x"}`))
+	loginW := httptest.NewRecorder()
+	h.ServeHTTP(loginW, loginReq)
+	if loginW.Code != http.StatusOK || len(loginW.Result().Cookies()) != 1 {
+		t.Fatalf("login failed: status %d, body %s", loginW.Code, loginW.Body.String())
+	}
+	authenticatedReq := httptest.NewRequest("GET", "/api/providers", nil)
+	authenticatedReq.AddCookie(loginW.Result().Cookies()[0])
+	authenticatedW := httptest.NewRecorder()
+	h.ServeHTTP(authenticatedW, authenticatedReq)
+	if authenticatedW.Code != http.StatusOK {
+		t.Fatalf("authenticated GET /api/providers status %d: %s", authenticatedW.Code, authenticatedW.Body.String())
+	}
+	providers = nil
+	if err := json.Unmarshal(authenticatedW.Body.Bytes(), &providers); err != nil {
+		t.Fatal(err)
+	}
+	for _, provider := range providers {
+		if provider.Name == "mock" && (provider.StatusReason == nil || *provider.StatusReason != "无可用 Key") {
+			t.Fatalf("authenticated response missing key reason: %s", authenticatedW.Body.String())
+		}
+		if provider.Name == "empty" && (provider.StatusReason == nil || *provider.StatusReason != "无可用模型") {
+			t.Fatalf("authenticated response missing model reason: %s", authenticatedW.Body.String())
+		}
 	}
 }
 

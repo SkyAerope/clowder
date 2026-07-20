@@ -125,16 +125,18 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 	// ---- 公开看板数据（绝不返回 key/email/password）----
 	mux.HandleFunc("GET /api/providers", public(func(w http.ResponseWriter, r *http.Request) {
 		type pv struct {
-			Name        string `json:"name"`
-			DisplayName string `json:"display_name"`
-			Status      string `json:"status"`
-			ActiveKeys  int    `json:"active_keys"`
-			TotalKeys   int    `json:"total_keys"`
-			AvgTTFTMs   int64  `json:"avg_ttft_ms"`
-			Priority    int    `json:"priority"`
-			ModelCount  int    `json:"model_count"`
+			Name         string `json:"name"`
+			DisplayName  string `json:"display_name"`
+			Status       string `json:"status"`
+			StatusReason string `json:"status_reason,omitempty"`
+			ActiveKeys   int    `json:"active_keys"`
+			TotalKeys    int    `json:"total_keys"`
+			AvgTTFTMs    int64  `json:"avg_ttft_ms"`
+			Priority     int    `json:"priority"`
+			ModelCount   int    `json:"model_count"`
 		}
 		var out []pv
+		includeStatusReason := a.Cfg.Dashboard.Admin && validSession(r)
 		for name, ps := range a.ConfiguredProviders() {
 			usable, total := a.Pool.UsableCount(name)
 			var ttftSum, ttftN int64
@@ -153,16 +155,30 @@ func RegisterAPI(mux *http.ServeMux, a *app.App) {
 			if ttftN > 0 {
 				avg = ttftSum / ttftN
 			}
-			status := "disabled"
+			status, statusReason := "disabled", ""
 			if ps.Manifest.Enabled {
 				status = a.Health.Status(name, "")
+				var reasons []string
 				if usable == 0 {
-					status = health.Unhealthy
+					reasons = append(reasons, "无可用 Key")
 				}
+				if len(ps.Models) == 0 {
+					reasons = append(reasons, "无可用模型")
+				}
+				if len(reasons) > 0 {
+					status = health.Unhealthy
+					statusReason = strings.Join(reasons, "；")
+				} else if status == health.Unhealthy {
+					statusReason = "健康检查失败"
+				}
+			}
+			if !includeStatusReason {
+				statusReason = ""
 			}
 			out = append(out, pv{
 				Name: name, DisplayName: ps.Manifest.DisplayName,
-				Status: status, ActiveKeys: usable, TotalKeys: total,
+				Status: status, StatusReason: statusReason,
+				ActiveKeys: usable, TotalKeys: total,
 				AvgTTFTMs: avg, Priority: ps.Manifest.Routing.Priority,
 				ModelCount: len(ps.Models),
 			})
