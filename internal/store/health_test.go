@@ -21,7 +21,7 @@ func TestHealthSnapshot_roundtrips_all_state(t *testing.T) {
 	lastSuccess := until.Add(-time.Hour)
 	want := store.HealthSnapshot{
 		Provider: "mock", Model: "model", Status: "unhealthy",
-		AvgTTFTMs: 125, ErrorCount: 4, BackoffCount: 3,
+		AvgTTFTMs: 125, ErrorCount: 4, BackoffCount: 3, LastRule: "model-gone",
 		UnhealthyUntil: &until, LastErrorAt: &lastError, LastSuccessAt: &lastSuccess,
 	}
 
@@ -40,7 +40,7 @@ func TestHealthSnapshot_roundtrips_all_state(t *testing.T) {
 	}
 	if got[0].Provider != want.Provider || got[0].Model != want.Model || got[0].Status != want.Status ||
 		got[0].AvgTTFTMs != want.AvgTTFTMs || got[0].ErrorCount != want.ErrorCount ||
-		got[0].BackoffCount != want.BackoffCount || !got[0].UnhealthyUntil.Equal(until) ||
+		got[0].BackoffCount != want.BackoffCount || got[0].LastRule != want.LastRule || !got[0].UnhealthyUntil.Equal(until) ||
 		!got[0].LastErrorAt.Equal(lastError) || !got[0].LastSuccessAt.Equal(lastSuccess) {
 		t.Fatalf("health snapshot = %#v, want %#v", got[0], want)
 	}
