@@ -22,6 +22,7 @@ model-a:
   - shared-native
 model-b:
   - shared-native
+same-name: []
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +55,7 @@ model-b:
 			},
 			"two": {
 				Manifest: &provider.Manifest{Name: "two", DisplayName: "Two", Routing: provider.RoutingPref{Priority: 20, Weight: 1}},
-				Models:   []string{"shared-native"},
+				Models:   []string{"shared-native", "same-name"},
 			},
 		},
 	}
@@ -71,6 +72,19 @@ func TestRebuildCanonicalManyToMany(t *testing.T) {
 	}
 	if got, want := a.providers["one"].NativesByCanonical["model-b"], []string{"shared-native"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("model-b natives = %v, want %v", got, want)
+	}
+}
+
+func TestCandidatesForRoutesSameNameCanonicalToNative(t *testing.T) {
+	a := newRoutingTestApp(t)
+
+	candidates := a.CandidatesFor("same-name")
+
+	if got, want := len(candidates), 1; got != want {
+		t.Fatalf("candidate count = %d, want %d", got, want)
+	}
+	if got := candidates[0]; got.Provider != "two" || got.Native != "same-name" || got.Canonical != "same-name" {
+		t.Fatalf("candidate = %+v", got)
 	}
 }
 

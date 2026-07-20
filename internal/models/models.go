@@ -87,10 +87,14 @@ func Load(path string) (*Mapping, error) {
 }
 
 // CanonicalsOf 返回 provider 原生模型名关联的全部 canonical name。
-// 精确名称优先；无精确匹配时返回所有命中的正则规则。
+// 显式精确匹配优先，同名 canonical 随后；两者均无匹配时返回所有命中的正则规则。
 func (m *Mapping) CanonicalsOf(native string) []string {
-	if canonicals := m.canonicalsByAlias[native]; len(canonicals) > 0 {
-		return append([]string(nil), canonicals...)
+	canonicals := append([]string(nil), m.canonicalsByAlias[native]...)
+	if m.IsCanonical(native) {
+		canonicals = appendUnique(canonicals, native)
+	}
+	if len(canonicals) > 0 {
+		return canonicals
 	}
 	var out []string
 	for _, p := range m.patterns {

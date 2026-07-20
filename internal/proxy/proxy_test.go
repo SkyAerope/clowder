@@ -635,10 +635,17 @@ func TestProviderQualifiedModels(t *testing.T) {
 	defer other.Close()
 	a, h := setupQualifiedProviders(t, mock.URL, other.URL)
 
-	t.Run("canonical wins over same-named native", func(t *testing.T) {
+	t.Run("canonical includes same-named native", func(t *testing.T) {
 		canonicalCandidates, found := a.CandidatesForProvider("shared-name", "mock")
-		if !found || len(canonicalCandidates) != 1 || canonicalCandidates[0].Native != "mock/canonical-native" {
+		if !found || len(canonicalCandidates) != 2 {
 			t.Fatalf("canonical candidates = %v, found=%v", canonicalCandidates, found)
+		}
+		canonicalNatives := map[string]bool{}
+		for _, candidate := range canonicalCandidates {
+			canonicalNatives[candidate.Native] = true
+		}
+		if !canonicalNatives["mock/canonical-native"] || !canonicalNatives["shared-name"] {
+			t.Fatalf("canonical natives = %v", canonicalNatives)
 		}
 		nativeCandidates, found := a.CandidatesForNativeProvider("shared-name", "mock")
 		if !found || len(nativeCandidates) != 1 || nativeCandidates[0].Native != "shared-name" {
@@ -648,7 +655,7 @@ func TestProviderQualifiedModels(t *testing.T) {
 		if w.Code != http.StatusOK {
 			t.Fatalf("status %d: %s", w.Code, w.Body.String())
 		}
-		if got := <-mockModels; got != "mock/canonical-native" {
+		if got := <-mockModels; !canonicalNatives[got] {
 			t.Fatalf("upstream model = %q", got)
 		}
 	})
@@ -703,7 +710,7 @@ func TestProviderQualifiedModels(t *testing.T) {
 	if err := json.Unmarshal(apiW.Body.Bytes(), &graph); err != nil {
 		t.Fatal(err)
 	}
-	if len(graph["shared-name"]) != 2 || len(graph["secondary-name"]) != 2 {
+	if len(graph["shared-name"]) != 4 || len(graph["secondary-name"]) != 2 {
 		t.Fatalf("unexpected graph: %s", apiW.Body.String())
 	}
 	for canonical, edges := range graph {

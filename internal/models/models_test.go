@@ -42,6 +42,30 @@ patterns:
 	}
 }
 
+func TestCanonicalsOfIncludesSameNameCanonical(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "models.yaml")
+	if err := os.WriteFile(path, []byte(`
+native-a: []
+model-b:
+  - native-a
+model-c:
+  - model-c
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mapping, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := mapping.CanonicalsOf("native-a"), []string{"model-b", "native-a"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("same-name canonical with explicit alias = %v, want %v", got, want)
+	}
+	if got, want := mapping.CanonicalsOf("model-c"), []string{"model-c"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("deduplicated same-name canonical = %v, want %v", got, want)
+	}
+}
+
 func TestMappingSlicesAreCopies(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "models.yaml")
 	if err := os.WriteFile(path, []byte("model-a:\n  - native-a\n"), 0o644); err != nil {
