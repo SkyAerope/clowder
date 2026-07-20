@@ -61,6 +61,9 @@ export interface Provider {
   display_name: string
   status: string
   status_reason?: string
+  last_rule?: string
+  last_error_at?: string
+  last_success_at?: string
   active_keys: number
   total_keys: number
   avg_ttft_ms: number
@@ -149,6 +152,7 @@ export interface HealthSnapshot {
   error_count: number
   last_error_at?: string
   last_success_at?: string
+  last_rule?: string
 }
 
 export interface RuleView {
