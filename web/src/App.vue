@@ -111,7 +111,7 @@ const navItems = [
     </header>
 
     <main class="mx-auto w-full max-w-7xl flex-1 p-4 md:p-6">
-      <TooltipProvider :delay-duration="600">
+      <TooltipProvider :delay-duration="400">
         <RouterView />
       </TooltipProvider>
     </main>
