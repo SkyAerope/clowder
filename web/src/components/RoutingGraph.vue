@@ -229,10 +229,10 @@ function short(s: string, max = 26) {
           <div
             class="flex h-full min-w-0 items-center text-xs font-medium text-foreground"
             :title="r.provider + (r.ttft ? ' · ' + r.ttft : '')"
-          >
-            <span class="min-w-0 truncate">{{ r.provider }}</span>
-            <span v-if="r.ttft" class="shrink-0 text-muted-foreground"> · {{ r.ttft }}</span>
-          </div>
+	          >
+	            <span class="min-w-0 flex-1 truncate">{{ r.provider }}</span>
+	            <span v-if="r.ttft" class="ml-2 shrink-0 text-right text-muted-foreground">{{ r.ttft }}</span>
+	          </div>
         </foreignObject>
         <circle :cx="rightDotX" :cy="rowY(i)" r="3.5" :fill="strokeOf(r.healthy, emphasized(r))" />
       </g>
