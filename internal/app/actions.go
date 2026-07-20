@@ -168,7 +168,7 @@ func (a *App) checkKey(ctx context.Context, keyID int64, chain bool) (CheckProbe
 	if k == nil {
 		return CheckProbeResult{}, nil
 	}
-	ps := a.Provider(k.Provider)
+	ps := a.ConfiguredProvider(k.Provider)
 	if ps == nil {
 		return CheckProbeResult{}, nil
 	}
