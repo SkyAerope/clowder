@@ -147,6 +147,8 @@ export interface HealthSnapshot {
   status: string
   avg_ttft_ms: number
   error_count: number
+  last_error_at?: string
+  last_success_at?: string
 }
 
 export interface RuleView {

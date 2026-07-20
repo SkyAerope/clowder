@@ -2,13 +2,13 @@
 import { ref, reactive, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import * as YAML from 'yaml'
-import { api, type KeyRow } from '../api'
+import { api, type HealthSnapshot, type KeyRow } from '../api'
 import Card from '../components/Card.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import CopyButton from '../components/CopyButton.vue'
+import ModelHealthTable from '../components/ModelHealthTable.vue'
 import ModelTagsInput from '../components/ModelTagsInput.vue'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
@@ -48,6 +48,7 @@ interface Detail {
 }
 
 const detail = ref<Detail | null>(null)
+const healthSnapshots = ref<HealthSnapshot[]>([])
 const registering = ref(false)
 const importing = ref(false)
 const importOpen = ref(false)
@@ -64,7 +65,12 @@ function ensureKeyState(id: number) {
 }
 
 async function load() {
-  detail.value = await api.get<Detail>(`/api/admin/providers/${name}`)
+  const [providerDetail, snapshots] = await Promise.all([
+    api.get<Detail>(`/api/admin/providers/${name}`),
+    api.get<HealthSnapshot[]>('/api/health'),
+  ])
+  detail.value = providerDetail
+  healthSnapshots.value = snapshots.filter((snapshot) => snapshot.provider === name)
 }
 
 async function register() {
@@ -392,10 +398,11 @@ onMounted(load)
     </div>
 
     <Card :title="`模型 (${detail.models?.length ?? 0})`">
-      <div class="flex flex-wrap gap-1.5">
-        <Badge v-for="m in detail.models" :key="m" variant="secondary" class="font-mono">{{ m }}</Badge>
-        <span v-if="!detail.models?.length" class="text-sm text-muted-foreground">无模型</span>
-      </div>
+      <ModelHealthTable
+        :models="detail.models"
+        :snapshots="healthSnapshots"
+        :provider-enabled="detail.manifest.enabled"
+      />
     </Card>
 
     <Card :title="`Keys (${detail.keys?.length ?? 0})`">
