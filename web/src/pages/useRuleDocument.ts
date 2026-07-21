@@ -117,8 +117,8 @@ export function useRuleDocument() {
     const indented = preset.yaml.split('\n').map((line) => (line ? `  ${line}` : line)).join('\n')
     yamlText.value = `${text.trimEnd()}\n\n${indented}\n`
     if (tab.value === 'visual') refreshDraft()
-    addedPresets.value.add(String(preset.rule.name))
-    toast.info(`已插入 ${preset.rule.name}，请检查后保存`)
+    addedPresets.value.add(String(preset.rule.slug))
+    toast.info(`已插入 ${preset.rule.name ?? preset.rule.slug}，请检查后保存`)
   }
 
   function onBeforeUnload(event: BeforeUnloadEvent) {

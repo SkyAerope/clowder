@@ -40,7 +40,7 @@ function toggleRace(rule: EditRule, route: string): void { const index = rule.ro
         <button type="button" class="flex min-w-0 flex-1 cursor-pointer items-start gap-2 text-left" @click="toggleOpen(rule._uid)">
           <component :is="expanded.has(rule._uid) ? ChevronDown : ChevronRight" class="text-muted-foreground mt-0.5 size-4 shrink-0" />
           <div class="min-w-0 flex-1 space-y-1">
-            <div class="flex items-center gap-2"><span class="truncate font-medium">{{ rule.description || '未命名规则' }}</span><span class="text-muted-foreground ml-auto shrink-0 truncate font-mono text-xs">{{ rule.name }}</span></div>
+            <div class="flex flex-col gap-0.5"><span class="truncate font-medium">{{ rule.name || '未命名规则' }}</span><span class="text-muted-foreground truncate font-mono text-xs">{{ rule.slug }}</span></div>
             <div class="flex flex-wrap items-center gap-1.5"><Badge variant="secondary">P{{ rule.priority }}</Badge><Badge variant="outline">{{ TYPE_LABELS[rule.whenType] }}</Badge><span class="text-muted-foreground text-xs">{{ summarize(rule) }}</span></div>
           </div>
         </button>
@@ -50,8 +50,8 @@ function toggleRace(rule: EditRule, route: string): void { const index = rule.ro
         </div>
       </div>
       <div v-if="expanded.has(rule._uid)" class="space-y-3 border-t border-foreground/10 p-3">
-        <Input v-model="rule.name" placeholder="规则名（英文标识）" />
-        <Input v-model="rule.description" placeholder="描述（显示为标题）" />
+        <Input v-model="rule.name" placeholder="名称（显示为标题）" />
+        <Input v-model="rule.slug" placeholder="Slug（英文标识）" />
         <div class="flex flex-wrap items-end gap-3">
           <div class="space-y-1"><Label class="text-xs text-muted-foreground">优先级（越小越优先）</Label><Input v-model.number="rule.priority" type="number" class="w-28" /></div>
           <div class="space-y-1"><Label class="text-xs text-muted-foreground">触发类型 (when)</Label><Select v-model="rule.whenType"><SelectTrigger class="w-48"><SelectValue /></SelectTrigger><SelectContent :body-lock="false"><SelectItem value="upstream">上游结果</SelectItem><SelectItem value="check">探活结果</SelectItem><SelectItem value="schedule">定时</SelectItem></SelectContent></Select></div>

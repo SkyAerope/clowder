@@ -18,7 +18,7 @@ function toggleOpen(uid: number) {
 }
 
 function isAdded(preset: RulePreset) {
-  return preset.exists || props.added.has(String(preset.rule.name))
+  return preset.exists || props.added.has(String(preset.rule.slug))
 }
 </script>
 
@@ -30,7 +30,7 @@ function isAdded(preset: RulePreset) {
         <div v-for="item in edits" :key="item.edit._uid" class="border-border overflow-hidden rounded-xl border">
           <div class="flex items-start gap-2 p-3">
             <button type="button" class="min-w-0 flex-1 cursor-pointer space-y-1 text-left" @click="toggleOpen(item.edit._uid)">
-              <div class="flex items-center gap-2"><component :is="expanded.has(item.edit._uid) ? ChevronDown : ChevronRight" class="text-muted-foreground size-4 shrink-0" /><span class="truncate font-medium">{{ item.edit.description || item.edit.name }}</span></div>
+              <div class="flex flex-col gap-0.5 pl-6"><component :is="expanded.has(item.edit._uid) ? ChevronDown : ChevronRight" class="text-muted-foreground size-4 shrink-0" /><span class="truncate font-medium">{{ item.edit.name || '未命名规则' }}</span><span class="text-muted-foreground truncate font-mono text-xs">{{ item.edit.slug }}</span></div>
               <div class="flex flex-wrap items-center gap-1.5 pl-6"><Badge variant="secondary" class="shrink-0">P{{ item.edit.priority }}</Badge><Badge variant="outline" class="shrink-0">{{ TYPE_LABELS[item.edit.whenType] }}</Badge><span class="text-muted-foreground text-xs">{{ summarize(item.edit) }}</span></div>
             </button>
             <Button v-if="isAdded(item.preset)" size="sm" variant="outline" disabled class="shrink-0">已添加</Button>
