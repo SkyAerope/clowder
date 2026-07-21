@@ -31,14 +31,6 @@ func registerActivityAPI(mux *http.ServeMux, admin func(http.HandlerFunc) http.H
 		}
 		jsonOK(w, views)
 	}))
-	mux.HandleFunc("GET /api/admin/trace/{id}", admin(func(w http.ResponseWriter, r *http.Request) {
-		logs, err := a.Store.ListTrace(r.PathValue("id"))
-		if err != nil {
-			jsonErr(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		jsonOK(w, logs)
-	}))
 	mux.HandleFunc("GET /api/admin/errors", admin(func(w http.ResponseWriter, r *http.Request) {
 		groups, err := a.Store.AggregateErrors(r.URL.Query().Get("rule"), queryInt(r, "limit", 100))
 		if err != nil {

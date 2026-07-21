@@ -1,20 +1,16 @@
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue'
-import { api, ApiError, type RequestLog, type Capture, type RequestLogEntry } from '../api'
+import { ref, onMounted } from 'vue'
+import { api, ApiError, type Capture, type RequestLogEntry } from '../api'
 import TableSkeleton from '../components/TableSkeleton.vue'
 import TraceTimeline from '../components/TraceTimeline.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Skeleton } from '@/components/ui/skeleton'
 import {
   Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import {
   Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
-} from '@/components/ui/dialog'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { toast } from 'vue-sonner'
 import { buildRequestParams, defaultRequestFilters, statusFilterError, type RequestFilterDraft } from './request-filters'
@@ -24,9 +20,6 @@ const logs = ref<RequestLogEntry[]>([])
 const loaded = ref(false)
 const offset = ref(0)
 const limit = 50
-const trace = ref<RequestLog[] | null>(null)
-const traceID = ref('')
-const traceOpen = ref(false)
 const initial = defaultRequestFilters()
 const draft = ref<RequestFilterDraft>({ ...initial })
 const applied = ref<RequestFilterDraft>({ ...initial })
@@ -107,14 +100,6 @@ function pretty(s: string): string {
   }
 }
 
-async function showTrace(id: string) {
-  traceID.value = id
-  trace.value = null
-  traceOpen.value = true
-  await nextTick()
-  trace.value = (await api.get<RequestLog[]>(`/api/admin/trace/${id}`)) ?? []
-}
-
 function statusClass(code?: number) {
   if (!code) return 'text-destructive'
   if (code < 300) return 'text-success'
@@ -191,10 +176,9 @@ onMounted(load)
               </TableCell>
               <TableCell class="text-xs whitespace-nowrap">{{ new Date(l.created_at + 'Z').toLocaleString() }}</TableCell>
               <TableCell>
-                <button class="font-mono text-xs text-primary hover:underline flex items-center gap-1 cursor-pointer"
-                  @click="showTrace(l.trace_id)">
-                  <GitBranch class="size-3" />{{ l.trace_id.slice(0, 8) }}
-                </button>
+                <span class="flex items-center gap-1 font-mono text-xs">
+                  <GitBranch class="size-3 text-muted-foreground" aria-hidden="true" />{{ l.trace_id.slice(0, 8) }}
+                </span>
               </TableCell>
               <TableCell>{{ l.attempt_no }}</TableCell>
               <TableCell>{{ l.provider }}</TableCell>
@@ -265,24 +249,5 @@ onMounted(load)
         </TableBody>
       </Table>
     </div>
-
-    <!-- Trace 链视图 -->
-    <Dialog v-model:open="traceOpen">
-      <DialogContent class="max-w-3xl max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Trace <span class="font-mono text-sm text-muted-foreground">{{ traceID }}</span></DialogTitle>
-        </DialogHeader>
-        <div v-if="trace === null" class="flex flex-col gap-3" role="status" aria-label="正在加载 Trace">
-          <div v-for="i in 3" :key="i" class="flex gap-3">
-            <Skeleton class="size-6 shrink-0 rounded-full" />
-            <div class="flex min-w-0 flex-1 flex-col gap-2 py-0.5">
-              <Skeleton class="h-4 w-48 max-w-full" />
-              <Skeleton class="h-3 w-64 max-w-full" />
-            </div>
-          </div>
-        </div>
-        <TraceTimeline v-else :trace="trace" />
-      </DialogContent>
-    </Dialog>
   </div>
 </template>
