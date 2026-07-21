@@ -1,8 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { api } from '../api'
-import type { HealthSnapshot } from '../api'
-import StatusBadge from './StatusBadge.vue'
+import { computed } from 'vue'
 import { Button } from '@/components/ui/button'
 import {
   Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow,
@@ -10,6 +7,10 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Check, Stethoscope, X } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
+import { api } from '../api'
+import type { HealthSnapshot } from '../api'
+import { createModelHealthOperations } from './model-health-operations'
+import StatusBadge from './StatusBadge.vue'
 
 type ModelHealthStatus = 'healthy' | 'probing' | 'unhealthy' | 'disabled'
 
@@ -33,79 +34,13 @@ const emit = defineEmits<{
   checked: []
 }>()
 
-type ModelCheckResponse = {
-  readonly status: string
-  readonly key_id: number
-  readonly model_response: string
-  readonly ttft_ms: number
-  readonly rule_name: string
-  readonly status_code: number
-  readonly response_body: string
-}
-
-type ModelCheckState = {
-  readonly loading: boolean
-  readonly result: 'success' | 'error' | null
-  readonly status: string
-  readonly keyID: number
-  readonly modelResponse: string
-  readonly ttftMS: number
-  readonly ruleName: string
-  readonly statusCode: number
-  readonly responseBody: string
-  readonly applying: boolean
-  readonly applied: boolean
-  readonly errorMessage: string
-}
-
-const checkStates = ref<Record<string, ModelCheckState>>({})
-
-function emptyCheckState(): ModelCheckState {
-  return {
-    loading: false, result: null, status: '', keyID: 0, modelResponse: '', ttftMS: 0,
-    ruleName: '', statusCode: 0, responseBody: '', applying: false, applied: false, errorMessage: '',
-  }
-}
-
-async function checkModel(model: string): Promise<void> {
-  checkStates.value[model] = { ...emptyCheckState(), loading: true }
-  try {
-    const response = await api.post<ModelCheckResponse>(`/api/admin/providers/${props.provider}/check-model`, { model })
-    checkStates.value[model] = {
-      ...emptyCheckState(),
-      result: response.status === 'active' ? 'success' : 'error',
-      status: response.status,
-      keyID: response.key_id,
-      modelResponse: response.model_response,
-      ttftMS: response.ttft_ms,
-      ruleName: response.rule_name,
-      statusCode: response.status_code,
-      responseBody: response.response_body,
-    }
-    emit('checked')
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : '未知错误'
-    checkStates.value[model] = { ...emptyCheckState(), result: 'error', errorMessage }
-  }
-}
-
-async function applyRule(model: string): Promise<void> {
-  const state = checkStates.value[model]
-  if (!state?.ruleName || state.applying || state.applied) return
-  checkStates.value[model] = { ...state, applying: true }
-  try {
-    await api.post(`/api/admin/providers/${props.provider}/apply-model-check-rule`, {
-      model, key_id: state.keyID, rule_name: state.ruleName,
-      status_code: state.statusCode, response_body: state.responseBody,
-    })
-    checkStates.value[model] = { ...state, applying: false, applied: true }
-    toast.success(`已应用规则 ${state.ruleName}`)
-    emit('checked')
-  } catch (error) {
-    checkStates.value[model] = { ...state, applying: false }
-    toast.error(`应用规则失败: ${error instanceof Error ? error.message : '未知错误'}`)
-  }
-}
+const { checkStates, checkModel, applyRule } = createModelHealthOperations({
+  provider: props.provider,
+  post: api.post,
+  checked: () => emit('checked'),
+  success: toast.success,
+  error: toast.error,
+})
 
 const rows = computed<ModelHealthRow[]>(() => {
   const snapshotsByModel = new Map(
@@ -166,7 +101,7 @@ function healthDetails(row: ModelHealthRow): string[] {
   <div class="flex flex-col gap-3">
     <div v-if="summary" class="text-xs text-muted-foreground">{{ summary }}</div>
     <div class="overflow-x-auto">
-      <Table>
+      <Table class="min-w-[38rem]">
         <TableHeader>
           <TableRow>
             <TableHead>模型</TableHead>
