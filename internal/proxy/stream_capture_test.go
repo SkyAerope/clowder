@@ -25,11 +25,11 @@ func TestStreamingCaptureStoresReceivedBodyWhenMatchingRuleRequestsIt(t *testing
 	defer up.Close()
 	rulesYAML := `
 rules:
-  - name: capture-stream-cut
-    when: { transport: stream_cut }
-    do:
-      - capture: { fields: [response_body] }
-    route: passthrough
+  - capture-stream-cut:
+      when: { transport: stream_cut }
+      do:
+        - capture: { fields: [response_body] }
+      route: passthrough
 `
 	a, h := setup(t, up.URL, []string{"k1"}, rulesYAML)
 	home := os.Getenv("CLOWDER_HOME")
@@ -54,11 +54,11 @@ func TestSuccessfulStreamingCaptureStoresBodyWhenMatchingRuleRequestsIt(t *testi
 	defer up.Close()
 	rulesYAML := `
 rules:
-  - name: capture-stream-success
-    when: { status_code: 200 }
-    do:
-      - capture: { fields: [response_body] }
-    route: passthrough
+  - capture-stream-success:
+      when: { status_code: 200 }
+      do:
+        - capture: { fields: [response_body] }
+      route: passthrough
 `
 	a, h := setup(t, up.URL, []string{"k1"}, rulesYAML)
 	home := os.Getenv("CLOWDER_HOME")

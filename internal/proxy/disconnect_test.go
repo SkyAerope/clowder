@@ -52,6 +52,6 @@ func TestClientDisconnectDuringRead(t *testing.T) {
 	}
 	if len(logs) != 0 {
 		t.Fatalf("client disconnect must not log any attempt, got %d (rule=%q, err=%q)",
-			len(logs), logs[0].MatchedRule, logs[0].ErrorMsg)
+			len(logs), logs[0].MatchedSlug, logs[0].ErrorMsg)
 	}
 }
