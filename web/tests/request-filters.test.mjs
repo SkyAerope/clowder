@@ -25,6 +25,7 @@ test('encodes every filter and converts local datetime to UTC', () => {
     error: 'true',
     rule: 'retry',
     fingerprint: 'fp-rate-%_',
+    captured: 'false',
   }
 
   // When
@@ -40,6 +41,7 @@ test('encodes every filter and converts local datetime to UTC', () => {
   assert.equal(params.get('error'), 'true')
   assert.equal(params.get('rule'), 'retry')
   assert.equal(params.get('fingerprint'), 'fp-rate-%_')
+  assert.equal(params.get('captured'), 'false')
   assert.equal(params.get('limit'), '25')
   assert.equal(params.get('offset'), '50')
   assert.ok(qs.includes('fingerprint=fp-rate-%25_'))
@@ -57,6 +59,20 @@ test('includes error=false but omits the all state', () => {
   // Then
   assert.equal(withFalse.get('error'), 'false')
   assert.equal(withAll.get('error'), null)
+})
+
+test('includes captured=true but omits the all state', () => {
+  // Given / When
+  const withTrue = new URLSearchParams(
+    buildRequestParams({ ...emptyRequestFilters, captured: 'true' }, 50, 0),
+  )
+  const withAll = new URLSearchParams(
+    buildRequestParams({ ...emptyRequestFilters, captured: 'all' }, 50, 0),
+  )
+
+  // Then
+  assert.equal(withTrue.get('captured'), 'true')
+  assert.equal(withAll.get('captured'), null)
 })
 
 test('treats whitespace-only text fields as empty', () => {

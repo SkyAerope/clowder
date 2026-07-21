@@ -31,6 +31,7 @@ type RequestFilters struct {
 	Model       string
 	StatusCode  *int
 	Error       *bool
+	Captured    *bool
 	MatchedSlug string
 	Fingerprint string
 }
@@ -83,6 +84,13 @@ func (s *Store) ListRequests(filters RequestFilters, limit, offset int) ([]*Requ
 			query += ` AND NULLIF(error_fingerprint, '') IS NULL`
 		}
 	}
+	if filters.Captured != nil {
+		if *filters.Captured {
+			query += ` AND EXISTS (SELECT 1 FROM captures c WHERE c.request_id = requests.id)`
+		} else {
+			query += ` AND NOT EXISTS (SELECT 1 FROM captures c WHERE c.request_id = requests.id)`
+		}
+	}
 	if filters.MatchedSlug != "" {
 		query += ` AND matched_slug = ?`
 		args = append(args, filters.MatchedSlug)
@@ -122,7 +130,7 @@ func scanRequests(rows *sql.Rows) ([]*RequestLog, error) {
 		var status sql.NullInt64
 		var ttft, latency sql.NullInt64
 		if err := rows.Scan(&r.ID, &r.TraceID, &r.AttemptNo, &keyID, &r.Provider, &r.Model,
-				&status, &ttft, &latency, &r.MatchedSlug, &r.ErrorMsg, &r.ErrorFingerprint, &r.CreatedAt); err != nil {
+			&status, &ttft, &latency, &r.MatchedSlug, &r.ErrorMsg, &r.ErrorFingerprint, &r.CreatedAt); err != nil {
 			return nil, err
 		}
 		if keyID.Valid {
@@ -164,7 +172,7 @@ func (s *Store) AggregateErrors(rule string, limit int) ([]*ErrorGroup, error) {
 		FROM requests WHERE error_fingerprint IS NOT NULL`
 	var args []any
 	if rule != "" {
-			q += ` AND matched_slug = ?`
+		q += ` AND matched_slug = ?`
 		args = append(args, rule)
 	}
 	q += ` GROUP BY error_fingerprint ORDER BY MAX(created_at) DESC LIMIT ?`

@@ -146,6 +146,48 @@ func TestRequests_filter_error_state_before_pagination(t *testing.T) {
 	}
 }
 
+func TestRequests_filter_captured_state_before_pagination(t *testing.T) {
+	// Given
+	st := newTestStore(t)
+	status200 := 200
+	fixtures := []*store.RequestLog{
+		{TraceID: "plain-old", AttemptNo: 1, Provider: "alpha", Model: "m1", StatusCode: &status200},
+		{TraceID: "captured", AttemptNo: 1, Provider: "alpha", Model: "m1", StatusCode: &status200},
+		{TraceID: "plain-new", AttemptNo: 1, Provider: "alpha", Model: "m1", StatusCode: &status200},
+	}
+	ids := make([]int64, 0, len(fixtures))
+	for _, fixture := range fixtures {
+		id, err := st.InsertRequest(fixture)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	if _, err := st.InsertCapture(&store.Capture{RequestID: ids[1], MatchedSlug: "retry", Provider: "alpha"}, 0); err != nil {
+		t.Fatal(err)
+	}
+	captured := true
+
+	// When
+	capturedLogs, err := st.ListRequests(store.RequestFilters{Captured: &captured}, 50, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	notCaptured := false
+	plainLogs, err := st.ListRequests(store.RequestFilters{Captured: &notCaptured}, 1, 1)
+
+	// Then
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(capturedLogs) != 1 || capturedLogs[0].ID != ids[1] {
+		t.Fatalf("captured request IDs = %v, want [%d]", requestIDs(capturedLogs), ids[1])
+	}
+	if len(plainLogs) != 1 || plainLogs[0].ID != ids[0] {
+		t.Fatalf("uncaptured request IDs = %v, want [%d]", requestIDs(plainLogs), ids[0])
+	}
+}
+
 func TestErrors_aggregate_distinct_values_and_filter_by_rule(t *testing.T) {
 	// Given
 	st := newTestStore(t)

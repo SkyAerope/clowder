@@ -152,12 +152,13 @@ func TestAPI_requests_rejects_invalid_filters(t *testing.T) {
 	fixture := newAPIBehaviorFixture(t, true)
 	cookie := fixture.login(t)
 	tests := map[string]string{
-		"invalid from":   "from=not-a-time",
-		"invalid to":     "to=not-a-time",
-		"inverted range": "from=2026-07-21T00%3A00%3A00Z&to=2026-07-20T00%3A00%3A00Z",
-		"invalid status": "status=abc",
-		"status too low": "status=99",
-		"invalid error":  "error=yes",
+		"invalid from":     "from=not-a-time",
+		"invalid to":       "to=not-a-time",
+		"inverted range":   "from=2026-07-21T00%3A00%3A00Z&to=2026-07-20T00%3A00%3A00Z",
+		"invalid status":   "status=abc",
+		"status too low":   "status=99",
+		"invalid error":    "error=yes",
+		"invalid captured": "captured=yes",
 	}
 
 	for name, query := range tests {

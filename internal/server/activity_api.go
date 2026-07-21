@@ -126,6 +126,19 @@ func parseRequestFilters(r *http.Request) (store.RequestFilters, error) {
 		}
 		filters.Error = &isError
 	}
+
+	if value := query.Get("captured"); value != "" {
+		var captured bool
+		switch value {
+		case "true":
+			captured = true
+		case "false":
+			captured = false
+		default:
+			return store.RequestFilters{}, fmt.Errorf("invalid captured")
+		}
+		filters.Captured = &captured
+	}
 	return filters, nil
 }
 

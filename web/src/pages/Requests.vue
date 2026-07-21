@@ -18,6 +18,7 @@ import { RefreshCw, ChevronLeft, ChevronRight, GitBranch, Fingerprint, TriangleA
 
 const logs = ref<RequestLogEntry[]>([])
 const loaded = ref(false)
+const filtering = ref(false)
 const offset = ref(0)
 const limit = 50
 const initial = defaultRequestFilters()
@@ -27,6 +28,7 @@ const expandedId = ref<number | null>(null)
 
 async function load() {
   expandedId.value = null
+  filtering.value = true
   try {
     const query = buildRequestParams(applied.value, limit, offset.value)
     logs.value = (await api.get<RequestLogEntry[]>(`/api/admin/requests?${query}`)) ?? []
@@ -38,6 +40,7 @@ async function load() {
     throw error
   } finally {
     loaded.value = true
+    filtering.value = false
   }
 }
 
@@ -53,11 +56,7 @@ function applyFilters() {
 }
 
 function resetFilters() {
-  const defaults = defaultRequestFilters()
-  draft.value = defaults
-  applied.value = { ...defaults }
-  offset.value = 0
-  load()
+  draft.value = defaultRequestFilters()
 }
 
 function toggleExpand(id: number) {
@@ -130,6 +129,8 @@ onMounted(load)
       <Input v-model="draft.provider" placeholder="提供商" aria-label="提供商" />
       <Input v-model="draft.model" placeholder="模型" aria-label="模型" />
       <Input v-model="draft.status" type="number" inputmode="numeric" placeholder="状态码" aria-label="状态码" />
+      <Input v-model="draft.rule" placeholder="规则" aria-label="规则" />
+      <Input v-model="draft.fingerprint" placeholder="错误指纹" aria-label="错误指纹" />
       <Select v-model="draft.error">
         <SelectTrigger class="w-full" aria-label="是否错误">
           <SelectValue placeholder="是否错误" />
@@ -142,11 +143,21 @@ onMounted(load)
           </SelectGroup>
         </SelectContent>
       </Select>
-      <Input v-model="draft.rule" placeholder="规则" aria-label="规则" />
-      <Input v-model="draft.fingerprint" placeholder="错误指纹" aria-label="错误指纹" />
-      <div class="col-span-2 flex items-center justify-end gap-2 md:col-span-4">
+      <Select v-model="draft.captured">
+        <SelectTrigger class="w-full" aria-label="有无抓包">
+          <SelectValue placeholder="有无抓包" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            <SelectItem value="all">全部</SelectItem>
+            <SelectItem value="true">已抓包</SelectItem>
+            <SelectItem value="false">未抓包</SelectItem>
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+      <div class="col-span-2 flex items-center justify-end gap-2 md:col-span-3">
         <Button type="button" variant="outline" @click="resetFilters"><X data-icon="inline-start" />重置</Button>
-        <Button type="submit"><ListFilter data-icon="inline-start" />筛选</Button>
+        <Button type="submit" :disabled="filtering"><ListFilter data-icon="inline-start" />筛选</Button>
       </div>
     </form>
 
@@ -190,7 +201,7 @@ onMounted(load)
               <TableCell class="text-xs max-w-56">
                 <Tooltip v-if="l.error_fingerprint || hasCapture(l)">
                   <TooltipTrigger as-child>
-                    <span class="flex w-fit items-center gap-1.5 text-foreground" tabindex="0">
+                    <span class="flex w-fit cursor-help items-center gap-1.5 text-foreground" tabindex="0">
                       <FileJson v-if="hasCapture(l)" class="size-4 shrink-0 text-primary" aria-label="已抓包" />
                       <template v-if="l.error_fingerprint">
                         <Fingerprint class="size-4 shrink-0" aria-hidden="true" />

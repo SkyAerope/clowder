@@ -7,6 +7,7 @@ export interface RequestFilterDraft {
   error: string
   rule: string
   fingerprint: string
+  captured: string
 }
 
 export const emptyRequestFilters: RequestFilterDraft = {
@@ -18,6 +19,7 @@ export const emptyRequestFilters: RequestFilterDraft = {
   error: '',
   rule: '',
   fingerprint: '',
+  captured: '',
 }
 
 export function defaultRequestFilters(now: Date = new Date()): RequestFilterDraft {
@@ -49,6 +51,7 @@ export function buildRequestParams(filters: RequestFilterDraft, limit: number, o
   if (filters.error === 'true' || filters.error === 'false') params.set('error', filters.error)
   setIfPresent(params, 'rule', filters.rule)
   setIfPresent(params, 'fingerprint', filters.fingerprint)
+  if (filters.captured === 'true' || filters.captured === 'false') params.set('captured', filters.captured)
   return params.toString()
 }
 
