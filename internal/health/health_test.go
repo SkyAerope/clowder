@@ -89,7 +89,7 @@ func TestFailureSnapshotIncludesTriggerRule(t *testing.T) {
 
 	// Then
 	snapshots := tracker.Snapshots()
-	if len(snapshots) != 1 || snapshots[0].LastRule != "model-gone" || snapshots[0].LastError == "" {
+	if len(snapshots) != 1 || snapshots[0].LastSlug != "model-gone" || snapshots[0].LastError == "" {
 		t.Fatalf("snapshot = %#v", snapshots)
 	}
 }
@@ -100,14 +100,14 @@ func TestRestorePreservesTriggerRule(t *testing.T) {
 	tracker := NewPersistent([]PersistedState{{
 		Provider: "provider", Model: "native", Status: Unhealthy,
 		UnhealthyUntil: ptrTime(time.Now().Add(time.Minute)), LastErrorAt: &lastError,
-		LastRule: "model-gone",
+		LastSlug: "model-gone",
 	}}, nil)
 
 	// When
 	snapshots := tracker.Snapshots()
 
 	// Then
-	if len(snapshots) != 1 || snapshots[0].LastRule != "model-gone" {
+	if len(snapshots) != 1 || snapshots[0].LastSlug != "model-gone" {
 		t.Fatalf("snapshot = %#v", snapshots)
 	}
 }

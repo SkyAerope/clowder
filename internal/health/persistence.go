@@ -12,7 +12,7 @@ type PersistedState struct {
 	UnhealthyUntil *time.Time
 	LastErrorAt    *time.Time
 	LastSuccessAt  *time.Time
-	LastRule       string
+	LastSlug       string
 }
 
 func NewPersistent(states []PersistedState, save func(PersistedState)) *Tracker {
@@ -28,7 +28,7 @@ func NewPersistent(states []PersistedState, save func(PersistedState)) *Tracker 
 		}
 		e := &entry{
 			status: status, avgTTFTMs: state.AvgTTFTMs, errorCount: state.ErrorCount,
-			backoffCount: state.BackoffCount, lastRule: state.LastRule,
+			backoffCount: state.BackoffCount, lastSlug: state.LastSlug,
 		}
 		if status == Unhealthy && state.UnhealthyUntil != nil {
 			e.until = *state.UnhealthyUntil
@@ -57,7 +57,7 @@ func (t *Tracker) persist(provider, model string, e *entry) {
 	state := PersistedState{
 		Provider: provider, Model: model, Status: e.status,
 		AvgTTFTMs: e.avgTTFTMs, ErrorCount: e.errorCount, BackoffCount: e.backoffCount,
-		LastRule: e.lastRule,
+		LastSlug: e.lastSlug,
 	}
 	if !e.until.IsZero() {
 		until := e.until
