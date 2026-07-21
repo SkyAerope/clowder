@@ -13,7 +13,7 @@ type ModelCheckResult struct {
 	KeyID         int64
 	ModelResponse string
 	TTFTMS        int64
-	RuleName      string
+	RuleSlug      string
 	StatusCode    int
 	ResponseBody  string
 }
@@ -22,7 +22,7 @@ type ModelCheckRuleApplication struct {
 	ProviderName string
 	NativeModel  string
 	KeyID        int64
-	RuleName     string
+	RuleSlug     string
 	StatusCode   int
 	ResponseBody string
 }
@@ -57,16 +57,16 @@ func (a *App) CheckModel(ctx context.Context, providerName, nativeModel string) 
 		AttemptNo: 1,
 	}
 	matched := a.Engine.Match(event)
-	ruleName := ""
+	ruleSlug := ""
 	if matched != nil && len(matched.Do) > 0 {
-		ruleName = matched.Name
+		ruleSlug = matched.Slug
 	}
 	if probe.Status == "active" {
 		a.Health.MarkSuccess(providerName, nativeModel, probe.TTFTMS)
 	}
 	return ModelCheckResult{
 		Status: probe.Status, KeyID: key.ID, ModelResponse: probe.ModelResponse,
-		TTFTMS: probe.TTFTMS, RuleName: ruleName,
+		TTFTMS: probe.TTFTMS, RuleSlug: ruleSlug,
 		StatusCode: probe.StatusCode, ResponseBody: probe.ResponseBody,
 	}, nil
 }
@@ -89,8 +89,8 @@ func (a *App) ApplyModelCheckRule(application ModelCheckRuleApplication) error {
 		IsError: application.StatusCode < 200 || application.StatusCode >= 300, AttemptNo: 1,
 	}
 	matched := a.Engine.Match(event)
-	if matched == nil || matched.Name != application.RuleName || len(matched.Do) == 0 {
-		return fmt.Errorf("applicable rule %s not found", application.RuleName)
+	if matched == nil || matched.Slug != application.RuleSlug || len(matched.Do) == 0 {
+		return fmt.Errorf("applicable rule %s not found", application.RuleSlug)
 	}
 	a.RunActions(&ActionContext{
 		Rule: matched, Event: event, KeyID: application.KeyID,

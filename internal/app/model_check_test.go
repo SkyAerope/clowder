@@ -25,7 +25,7 @@ func TestCheckModel_returns_matching_rule_with_actions(t *testing.T) {
 	t.Cleanup(upstream.Close)
 	a, key := newModelCheckTestApp(t, upstream.URL, []*rules.Rule{
 		{
-			Name: "record-success", Enabled: true, Priority: 10,
+			Slug: "record-success", Enabled: true, Priority: 10,
 			When: rules.When{Provider: "test", Model: "native-model", StatusCode: "2xx"},
 			Do:   []rules.Action{{Kind: "mark_key", MarkStatus: store.KeyActive}},
 		},
@@ -41,8 +41,8 @@ func TestCheckModel_returns_matching_rule_with_actions(t *testing.T) {
 	if result.KeyID != key.ID || result.Status != "active" || result.ModelResponse != "yes" {
 		t.Fatalf("result = %+v", result)
 	}
-	if result.RuleName != "record-success" {
-		t.Fatalf("rule name = %q, want record-success", result.RuleName)
+	if result.RuleSlug != "record-success" {
+		t.Fatalf("rule slug = %q, want record-success", result.RuleSlug)
 	}
 	if got := a.Health.Status("test", "native-model"); got != health.Healthy {
 		t.Fatalf("health = %q, want %q", got, health.Healthy)
@@ -57,7 +57,7 @@ func TestCheckModel_hides_matching_rule_without_actions(t *testing.T) {
 	}))
 	t.Cleanup(upstream.Close)
 	a, _ := newModelCheckTestApp(t, upstream.URL, []*rules.Rule{{
-		Name: "route-only", Enabled: true, When: rules.When{StatusCode: "2xx"},
+		Slug: "route-only", Enabled: true, When: rules.When{StatusCode: "2xx"},
 		Route: rules.RouteSpec{Single: rules.RouteNextProvider},
 	}})
 
@@ -68,22 +68,22 @@ func TestCheckModel_hides_matching_rule_without_actions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.RuleName != "" {
-		t.Fatalf("rule name = %q, want empty", result.RuleName)
+	if result.RuleSlug != "" {
+		t.Fatalf("rule slug = %q, want empty", result.RuleSlug)
 	}
 }
 
 func TestApplyModelCheckRule_runs_rule_actions(t *testing.T) {
 	// Given
 	a, key := newModelCheckTestApp(t, "http://unused", []*rules.Rule{{
-		Name: "invalidate", Enabled: true,
+		Slug: "invalidate", Enabled: true,
 		Do: []rules.Action{{Kind: "mark_key", MarkStatus: store.KeyInvalid}},
 	}})
 
 	// When
 	err := a.ApplyModelCheckRule(ModelCheckRuleApplication{
 		ProviderName: "test", NativeModel: "native-model", KeyID: key.ID,
-		RuleName: "invalidate", StatusCode: http.StatusOK, ResponseBody: "yes",
+		RuleSlug: "invalidate", StatusCode: http.StatusOK, ResponseBody: "yes",
 	})
 
 	// Then
@@ -98,7 +98,7 @@ func TestApplyModelCheckRule_runs_rule_actions(t *testing.T) {
 func TestApplyModelCheckRule_rejects_rule_that_does_not_match_check_result(t *testing.T) {
 	// Given
 	a, key := newModelCheckTestApp(t, "http://unused", []*rules.Rule{{
-		Name: "invalidate-on-error", Enabled: true,
+		Slug: "invalidate-on-error", Enabled: true,
 		When: rules.When{StatusCode: "500"},
 		Do:   []rules.Action{{Kind: "mark_key", MarkStatus: store.KeyInvalid}},
 	}})
@@ -106,7 +106,7 @@ func TestApplyModelCheckRule_rejects_rule_that_does_not_match_check_result(t *te
 	// When
 	err := a.ApplyModelCheckRule(ModelCheckRuleApplication{
 		ProviderName: "test", NativeModel: "native-model", KeyID: key.ID,
-		RuleName: "invalidate-on-error", StatusCode: http.StatusOK, ResponseBody: "yes",
+		RuleSlug: "invalidate-on-error", StatusCode: http.StatusOK, ResponseBody: "yes",
 	})
 
 	// Then

@@ -24,7 +24,7 @@ func registerModelCheckAPI(mux *http.ServeMux, admin func(http.HandlerFunc) http
 		jsonOK(w, map[string]any{
 			"status": result.Status, "key_id": result.KeyID,
 			"model_response": result.ModelResponse, "ttft_ms": result.TTFTMS,
-			"rule_name": result.RuleName, "status_code": result.StatusCode,
+			"rule_slug": result.RuleSlug, "status_code": result.StatusCode,
 			"response_body": result.ResponseBody,
 		})
 	}))
@@ -33,17 +33,17 @@ func registerModelCheckAPI(mux *http.ServeMux, admin func(http.HandlerFunc) http
 		var body struct {
 			Model        string `json:"model"`
 			KeyID        int64  `json:"key_id"`
-			RuleName     string `json:"rule_name"`
+			RuleSlug     string `json:"rule_slug"`
 			StatusCode   int    `json:"status_code"`
 			ResponseBody string `json:"response_body"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Model == "" || body.KeyID == 0 || body.RuleName == "" {
-			jsonErr(w, http.StatusBadRequest, "model, key_id and rule_name are required")
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Model == "" || body.KeyID == 0 || body.RuleSlug == "" {
+			jsonErr(w, http.StatusBadRequest, "model, key_id and rule_slug are required")
 			return
 		}
 		if err := application.ApplyModelCheckRule(app.ModelCheckRuleApplication{
 			ProviderName: r.PathValue("name"), NativeModel: body.Model, KeyID: body.KeyID,
-			RuleName: body.RuleName, StatusCode: body.StatusCode, ResponseBody: body.ResponseBody,
+			RuleSlug: body.RuleSlug, StatusCode: body.StatusCode, ResponseBody: body.ResponseBody,
 		}); err != nil {
 			jsonErr(w, http.StatusBadRequest, err.Error())
 			return
