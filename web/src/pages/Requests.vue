@@ -82,7 +82,7 @@ onMounted(load)
             <TableCell><span :class="statusClass(l.status_code)" class="font-medium">{{ l.status_code ?? 'ERR' }}</span></TableCell>
             <TableCell class="text-xs">{{ l.ttft_ms != null ? l.ttft_ms + 'ms' : '—' }}</TableCell>
             <TableCell class="text-xs">{{ l.latency_ms != null ? l.latency_ms + 'ms' : '—' }}</TableCell>
-            <TableCell class="text-xs">{{ l.matched_rule || '—' }}</TableCell>
+            <TableCell class="text-xs">{{ l.matched_slug || '—' }}</TableCell>
             <TableCell class="text-xs text-destructive max-w-56 truncate" :title="l.error_msg">{{ l.error_msg || '' }}</TableCell>
           </TableRow>
           <TableEmpty v-if="!logs.length" :colspan="10">暂无请求</TableEmpty>
@@ -115,7 +115,7 @@ onMounted(load)
               </div>
               <div class="text-xs text-muted-foreground">
                 TTFT {{ t.ttft_ms != null ? t.ttft_ms + 'ms' : '—' }} · 耗时 {{ t.latency_ms != null ? t.latency_ms + 'ms' : '—' }}
-                <template v-if="t.matched_rule"> · 规则 <span class="text-primary">{{ t.matched_rule }}</span></template>
+                <template v-if="t.matched_slug"> · 规则 <span class="text-primary">{{ t.matched_slug }}</span></template>
               </div>
               <div v-if="t.error_msg" class="text-xs text-destructive break-all">{{ t.error_msg }}</div>
             </div>

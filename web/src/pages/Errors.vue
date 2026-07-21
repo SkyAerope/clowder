@@ -43,8 +43,8 @@ async function load() {
 
 function makeRule(g: ErrorGroup): EditRule {
   const rule = blankRule()
-  rule.name = `known-${g.provider}-${g.fingerprint.slice(0, 8)}`
-  rule.description = `已知错误 (fingerprint ${g.fingerprint.slice(0, 8)})`
+  rule.slug = `known-${g.provider}-${g.fingerprint.slice(0, 8)}`
+  rule.name = `已知错误 (fingerprint ${g.fingerprint.slice(0, 8)})`
   rule.priority = 50
   rule.whenClauses.push({ field: 'provider', text: g.provider, regex: false })
   if (g.status_code) rule.whenClauses.push({ field: 'status_code', text: String(g.status_code), regex: false })
