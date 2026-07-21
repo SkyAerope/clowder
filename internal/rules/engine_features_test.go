@@ -10,22 +10,22 @@ func TestEngineNeedsResponseCaptureTeeOnlyForEnabledRulesCapturingBody(t *testin
 	}{
 		{
 			name: "explicit response body",
-			yaml: `rules: [{ name: capture, do: [{ capture: { fields: [response_body] } }] }]`,
+			yaml: `rules: [{ capture: { do: [{ capture: { fields: [response_body] } }] } }]`,
 			want: true,
 		},
 		{
 			name: "empty fields captures all",
-			yaml: `rules: [{ name: capture, do: [{ capture: {} }] }]`,
+			yaml: `rules: [{ capture: { do: [{ capture: {} }] } }]`,
 			want: true,
 		},
 		{
 			name: "response headers only",
-			yaml: `rules: [{ name: capture, do: [{ capture: { fields: [response_headers] } }] }]`,
+			yaml: `rules: [{ capture: { do: [{ capture: { fields: [response_headers] } }] } }]`,
 			want: false,
 		},
 		{
 			name: "disabled response body capture",
-			yaml: `rules: [{ name: capture, enabled: false, do: [{ capture: { fields: [response_body] } }] }]`,
+			yaml: `rules: [{ capture: { enabled: false, do: [{ capture: { fields: [response_body] } }] } }]`,
 			want: false,
 		},
 	}
@@ -48,13 +48,13 @@ func TestEngineNeedsResponseCaptureTeeOnlyForEnabledRulesCapturingBody(t *testin
 func TestEngineMinTTFTThresholdUsesLowestEnabledRule(t *testing.T) {
 	rules, err := ParseRules([]byte(`
 rules:
-  - name: slower
-    when: { ttft_over_ms: 1200 }
-  - name: faster
-    when: { ttft_over_ms: 900 }
-  - name: disabled
-    enabled: false
-    when: { ttft_over_ms: 100 }
+  - slower:
+      when: { ttft_over_ms: 1200 }
+  - faster:
+      when: { ttft_over_ms: 900 }
+  - disabled:
+      enabled: false
+      when: { ttft_over_ms: 100 }
 `), SourceUserFile)
 	if err != nil {
 		t.Fatal(err)

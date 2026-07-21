@@ -11,9 +11,9 @@ import (
 // transport 基础设施故障 → provider 级 unhealthy + next_provider。
 // priority 1：优先于一切用户/默认规则，确保 dns/conn/tls 基础故障第一时间标记 provider 不健康。
 func BuiltinRules() []*Rule {
-	mk := func(name, transport string) *Rule {
+	mk := func(slug, transport string) *Rule {
 		return &Rule{
-			Name:     name,
+			Slug:     slug,
 			Priority: 1,
 			Source:   SourceBuiltin,
 			Builtin:  true,
@@ -32,117 +32,117 @@ func BuiltinRules() []*Rule {
 
 // DefaultRulesYAML 随发布写入 rules.yaml 的默认规则（可删可改）。
 const DefaultRulesYAML = `# clowder 规则文件（全局）。管理面板规则页可视化编辑此文件。
-# 规则结构：name + when（触发）+ if（可选条件）+ do（副作用）+ route（路由决策）
+# 规则结构：以 slug 为列表项 key，值内含 name（可选标题）+ when（触发）+ if（可选条件）+ do（副作用）+ route（路由决策）
 rules:
-  - name: default-4xx-passthrough
-    description: "4xx 客户端错误默认透传"
-    priority: 8000
-    when: { status_code: 400-499 }
-    do:
-      - capture: { fields: [response_headers, response_body, status_code] }
-    route: passthrough
+  - default-4xx-passthrough:
+      name: "4xx 客户端错误默认透传"
+      priority: 8000
+      when: { status_code: 400-499 }
+      do:
+        - capture: { fields: [response_headers, response_body, status_code] }
+      route: passthrough
 
-  - name: default-5xx-retry
-    description: "5xx 服务端错误换 provider 重试"
-    priority: 8000
-    when: { status_code: 500-599 }
-    do:
-      - capture: { fields: [response_headers, response_body, status_code] }
-    route: next_provider
+  - default-5xx-retry:
+      name: "5xx 服务端错误换 provider 重试"
+      priority: 8000
+      when: { status_code: 500-599 }
+      do:
+        - capture: { fields: [response_headers, response_body, status_code] }
+      route: next_provider
 
-  - name: default-transport-retry
-    description: "任意传输错误换 provider 重试"
-    priority: 8000
-    when: { transport: true }
-    do:
-      - capture: { fields: [response_headers, response_body, status_code] }
-    route: next_provider
+  - default-transport-retry:
+      name: "任意传输错误换 provider 重试"
+      priority: 8000
+      when: { transport: true }
+      do:
+        - capture: { fields: [response_headers, response_body, status_code] }
+      route: next_provider
 
-  - name: default-ttft-timeout
-    description: "TTFT 超 7s 切换 provider"
-    priority: 8000
-    when: { ttft_over_ms: 7000 }
-    do:
-      - capture: { fields: [response_headers, response_body, status_code] }
-    route: next_provider
+  - default-ttft-timeout:
+      name: "TTFT 超 7s 切换 provider"
+      priority: 8000
+      when: { ttft_over_ms: 7000 }
+      do:
+        - capture: { fields: [response_headers, response_body, status_code] }
+      route: next_provider
 
-  - name: default-catch-all
-    description: "兜底：任意未分类错误透传并留样本"
-    priority: 10000
-    when: { error: true }
-    do:
-      - capture: { fields: [response_headers, response_body, status_code] }
-    route: passthrough
+  - default-catch-all:
+      name: "兜底：任意未分类错误透传并留样本"
+      priority: 10000
+      when: { error: true }
+      do:
+        - capture: { fields: [response_headers, response_body, status_code] }
+      route: passthrough
 `
 
 // PresetRulesYAML 预设规则（规则页「添加预设」入口的候选；不自动写入）。
 const PresetRulesYAML = `rules:
-  - name: preset-429-backoff
-    description: "429 指数退避后换 key"
-    when: { status_code: 429 }
-    do:
-      - backoff_key: {}
-    route: next_key
+  - preset-429-backoff:
+      name: "429 指数退避后换 key"
+      when: { status_code: 429 }
+      do:
+        - backoff_key: {}
+      route: next_key
 
-  - name: preset-401-check-key
-    description: "401 时跑 check 判定 key 状态后换 key"
-    when: { status_code: 401 }
-    do:
-      - check_key: { chain: true }
-    route: next_key
+  - preset-401-check-key:
+      name: "401 时跑 check 判定 key 状态后换 key"
+      when: { status_code: 401 }
+      do:
+        - check_key: { chain: true }
+      route: next_key
 
-  - name: preset-on-check-invalid
-    description: "check 返回 invalid 时永久禁用 key"
-    when:
-      check: { status: invalid }
-    do:
-      - mark_key: invalid
+  - preset-on-check-invalid:
+      name: "check 返回 invalid 时永久禁用 key"
+      when:
+        check: { status: invalid }
+      do:
+        - mark_key: invalid
 
-  - name: preset-on-check-rate-limited
-    description: "check 返回 rate_limited 时临时退避 key"
-    when:
-      check: { status: rate_limited }
-    do:
-      - mark_key: rate_limited
+  - preset-on-check-rate-limited:
+      name: "check 返回 rate_limited 时临时退避 key"
+      when:
+        check: { status: rate_limited }
+      do:
+        - mark_key: rate_limited
 
-  - name: preset-404-model-gone
-    description: "404 标记模型不健康"
-    when: { status_code: 404 }
-    do:
-      - mark_model_unhealthy: {}
-    route: next_provider
+  - preset-404-model-gone:
+      name: "404 标记模型不健康"
+      when: { status_code: 404 }
+      do:
+        - mark_model_unhealthy: {}
+      route: next_provider
 
-  - name: default-4xx-passthrough
-    description: "4xx 客户端错误默认透传"
-    priority: 8000
-    when: { status_code: 400-499 }
-    do:
-      - capture: { fields: [response_headers, response_body, status_code] }
-    route: passthrough
+  - default-4xx-passthrough:
+      name: "4xx 客户端错误默认透传"
+      priority: 8000
+      when: { status_code: 400-499 }
+      do:
+        - capture: { fields: [response_headers, response_body, status_code] }
+      route: passthrough
 
-  - name: default-5xx-retry
-    description: "5xx 服务端错误换 provider 重试"
-    priority: 8000
-    when: { status_code: 500-599 }
-    do:
-      - capture: { fields: [response_headers, response_body, status_code] }
-    route: next_provider
+  - default-5xx-retry:
+      name: "5xx 服务端错误换 provider 重试"
+      priority: 8000
+      when: { status_code: 500-599 }
+      do:
+        - capture: { fields: [response_headers, response_body, status_code] }
+      route: next_provider
 
-  - name: default-ttft-timeout
-    description: "TTFT 超 7s 切换 provider"
-    priority: 8000
-    when: { ttft_over_ms: 7000 }
-    do:
-      - capture: { fields: [response_headers, response_body, status_code] }
-    route: next_provider
+  - default-ttft-timeout:
+      name: "TTFT 超 7s 切换 provider"
+      priority: 8000
+      when: { ttft_over_ms: 7000 }
+      do:
+        - capture: { fields: [response_headers, response_body, status_code] }
+      route: next_provider
 
-  - name: default-catch-all
-    description: "兜底：任意未分类错误透传并留样本"
-    priority: 10000
-    when: { error: true }
-    do:
-      - capture: { fields: [response_headers, response_body, status_code] }
-    route: passthrough
+  - default-catch-all:
+      name: "兜底：任意未分类错误透传并留样本"
+      priority: 10000
+      when: { error: true }
+      do:
+        - capture: { fields: [response_headers, response_body, status_code] }
+      route: passthrough
 `
 
 // EnsureUserRulesFile rules.yaml 不存在时写入默认规则。

@@ -69,6 +69,6 @@ func TestDefaultRules_do_not_route_successful_upstream_responses(t *testing.T) {
 	matched := NewEngine(rules).Match(&Event{Type: "upstream", StatusCode: 204})
 
 	if matched != nil {
-		t.Fatalf("Match() = %q, want no route", matched.Name)
+		t.Fatalf("Match() = %q, want no route", matched.Slug)
 	}
 }

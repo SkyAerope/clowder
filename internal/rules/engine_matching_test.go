@@ -23,8 +23,8 @@ func engineWith(t *testing.T, extraYAML string) *Engine {
 func TestRuleWithoutWhenMatchesAnyUpstreamEvent(t *testing.T) {
 	rules, err := ParseRules([]byte(`
 rules:
-  - name: unconditional
-    route: passthrough
+  - unconditional:
+      route: passthrough
 `), SourceUserFile)
 	if err != nil {
 		t.Fatalf("rule without when should parse: %v", err)
@@ -32,7 +32,7 @@ rules:
 
 	got := NewEngine(rules).Match(&Event{Type: "upstream", StatusCode: 200})
 
-	if got == nil || got.Name != "unconditional" {
+	if got == nil || got.Slug != "unconditional" {
 		t.Fatalf("rule without when should match upstream events, got %v", ruleName(got))
 	}
 }
@@ -40,18 +40,18 @@ rules:
 func TestMatchPriority(t *testing.T) {
 	engine := engineWith(t, `
 rules:
-  - name: ftl-trial-ended
-    priority: 100
-    when: { provider: featherless, status_code: 403, body_contains: "trial ended" }
-    do: [ { mark_key: invalid } ]
-    route: next_key
+  - ftl-trial-ended:
+      priority: 100
+      when: { provider: featherless, status_code: 403, body_contains: "trial ended" }
+      do: [ { mark_key: invalid } ]
+      route: next_key
 `)
 
 	matched := engine.Match(&Event{
 		Type: "upstream", Provider: "featherless", StatusCode: 403,
 		Body: `{"error":"your trial ended"}`, IsError: true,
 	})
-	if matched == nil || matched.Name != "ftl-trial-ended" {
+	if matched == nil || matched.Slug != "ftl-trial-ended" {
 		t.Fatalf("want ftl-trial-ended, got %v", ruleName(matched))
 	}
 
@@ -65,7 +65,7 @@ func TestBuiltinTransportPriority(t *testing.T) {
 	engine := engineWith(t, "")
 
 	matched := engine.Match(&Event{Type: "upstream", Provider: "p", Transport: TransportDNSFailure, IsError: true})
-	if matched == nil || matched.Name != "builtin-dns-failure" {
+	if matched == nil || matched.Slug != "builtin-dns-failure" {
 		t.Fatalf("want builtin-dns-failure, got %v", ruleName(matched))
 	}
 	matched = engine.Match(&Event{Type: "upstream", Provider: "p", Transport: TransportStreamCut, IsError: true})
@@ -77,7 +77,7 @@ func TestBuiltinTransportPriority(t *testing.T) {
 func TestDisabledBuiltinFallsThroughToUserRules(t *testing.T) {
 	builtins := BuiltinRules()
 	for _, rule := range builtins {
-		if rule.Name == "builtin-dns-failure" {
+		if rule.Slug == "builtin-dns-failure" {
 			rule.Enabled = false
 		}
 	}
@@ -97,25 +97,25 @@ func TestDisabledBuiltinFallsThroughToUserRules(t *testing.T) {
 func TestIfConditionSelectsEligibleHigherPriorityRule(t *testing.T) {
 	engine := engineWith(t, `
 rules:
-  - name: too-many-key-switches
-    priority: 50
-    when: { status_code: 429 }
-    if:
-      key_switches: { gte: 2 }
-    route: next_provider
-  - name: rate-limit
-    priority: 100
-    when: { status_code: 429 }
-    do: [ { mark_key: rate_limited } ]
-    route: next_key
+  - too-many-key-switches:
+      priority: 50
+      when: { status_code: 429 }
+      if:
+        key_switches: { gte: 2 }
+      route: next_provider
+  - rate-limit:
+      priority: 100
+      when: { status_code: 429 }
+      do: [ { mark_key: rate_limited } ]
+      route: next_key
 `)
 
 	matched := engine.Match(&Event{Type: "upstream", StatusCode: 429, IsError: true, KeySwitches: 1})
-	if matched == nil || matched.Name != "rate-limit" {
+	if matched == nil || matched.Slug != "rate-limit" {
 		t.Fatalf("want rate-limit, got %v", ruleName(matched))
 	}
 	matched = engine.Match(&Event{Type: "upstream", StatusCode: 429, IsError: true, KeySwitches: 2})
-	if matched == nil || matched.Name != "too-many-key-switches" {
+	if matched == nil || matched.Slug != "too-many-key-switches" {
 		t.Fatalf("want too-many-key-switches, got %v", ruleName(matched))
 	}
 }
@@ -123,15 +123,15 @@ rules:
 func TestCheckTriggerMatchesStatusWithoutDefaultRoute(t *testing.T) {
 	engine := engineWith(t, `
 rules:
-  - name: on-check-invalid
-    when:
-      check: { status: invalid }
-    do: [ { mark_key: invalid } ]
+  - on-check-invalid:
+      when:
+        check: { status: invalid }
+      do: [ { mark_key: invalid } ]
 `)
 
 	matched := engine.Match(&Event{Type: "check", Provider: "featherless", CheckStatus: "invalid"})
 
-	if matched == nil || matched.Name != "on-check-invalid" {
+	if matched == nil || matched.Slug != "on-check-invalid" {
 		t.Fatalf("want on-check-invalid, got %v", ruleName(matched))
 	}
 	if matched.Route.Single != "" {
@@ -143,5 +143,5 @@ func ruleName(rule *Rule) string {
 	if rule == nil {
 		return "<nil>"
 	}
-	return rule.Name
+	return rule.Slug
 }
