@@ -27,7 +27,7 @@ func (a *App) RunActions(actx *ActionContext) {
 	for _, act := range actx.Rule.Do {
 		if act.Kind == "mark_key" {
 			if err := a.runAction(act, actx); err != nil {
-				a.Log.Warn("rule action failed", "rule", actx.Rule.Name, "action", act.Kind, "error", err)
+				a.Log.Warn("rule action failed", "slug", actx.Rule.Slug, "action", act.Kind, "error", err)
 			}
 			continue
 		}
@@ -36,7 +36,7 @@ func (a *App) RunActions(actx *ActionContext) {
 		go func() {
 			defer a.actionsWG.Done()
 			if err := a.runAction(act, actx); err != nil {
-				a.Log.Warn("rule action failed", "rule", actx.Rule.Name, "action", act.Kind, "error", err)
+				a.Log.Warn("rule action failed", "slug", actx.Rule.Slug, "action", act.Kind, "error", err)
 			}
 		}()
 	}
@@ -69,10 +69,10 @@ func (a *App) runAction(act rules.Action, actx *ActionContext) error {
 		return a.Pool.BackoffKey(actx.KeyID)
 	case "mark_model_unhealthy":
 		if actx.Native != "" {
-			a.Health.MarkModelDown(actx.Provider, actx.Native, actx.Rule.Name)
+			a.Health.MarkModelDown(actx.Provider, actx.Native, actx.Rule.Slug)
 		}
 	case "mark_provider_unhealthy":
-		a.Health.MarkProviderDown(actx.Provider, actx.Rule.Name)
+		a.Health.MarkProviderDown(actx.Provider, actx.Rule.Slug)
 	case "check_key":
 		if actx.KeyID == 0 {
 			return nil
@@ -106,7 +106,7 @@ func (a *App) FeedCheckResult(providerName string, keyID int64, status string) {
 
 // fireScheduleRule 定时规则到点：直接执行其 do（无请求主线，route 忽略）。
 func (a *App) fireScheduleRule(r *rules.Rule) {
-	a.Log.Info("schedule rule fired", "rule", r.Name)
+	a.Log.Info("schedule rule fired", "slug", r.Slug)
 	actx := &ActionContext{
 		Rule:     r,
 		Event:    &rules.Event{Type: "schedule"},

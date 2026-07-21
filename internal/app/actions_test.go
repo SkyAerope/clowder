@@ -33,7 +33,7 @@ func TestRunActions_applies_mark_key_before_returning(t *testing.T) {
 	}
 	a := &app.App{Pool: p, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	ctx := &app.ActionContext{
-		Rule:  &rules.Rule{Name: "invalidate", Do: []rules.Action{{Kind: "mark_key", MarkStatus: "invalid"}}},
+		Rule:  &rules.Rule{Slug: "invalidate", Do: []rules.Action{{Kind: "mark_key", MarkStatus: "invalid"}}},
 		Event: &rules.Event{Type: "upstream"},
 		KeyID: key.ID,
 	}

@@ -22,7 +22,7 @@ func (a *App) saveCapture(act rules.Action, actx *ActionContext) {
 	}
 	c := &store.Capture{
 		RequestID:   actx.RequestID,
-		MatchedRule: actx.Rule.Name,
+		MatchedSlug: actx.Rule.Slug,
 		Fingerprint: actx.Fingerprint,
 		Provider:    actx.Provider,
 		Model:       actx.Model,
