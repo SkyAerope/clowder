@@ -21,7 +21,7 @@ func TestHealthSnapshot_roundtrips_all_state(t *testing.T) {
 	lastSuccess := until.Add(-time.Hour)
 	want := store.HealthSnapshot{
 		Provider: "mock", Model: "model", Status: "unhealthy",
-		AvgTTFTMs: 125, ErrorCount: 4, BackoffCount: 3, LastRule: "model-gone",
+		AvgTTFTMs: 125, ErrorCount: 4, BackoffCount: 3, LastSlug: "model-gone",
 		UnhealthyUntil: &until, LastErrorAt: &lastError, LastSuccessAt: &lastSuccess,
 	}
 
@@ -40,7 +40,7 @@ func TestHealthSnapshot_roundtrips_all_state(t *testing.T) {
 	}
 	if got[0].Provider != want.Provider || got[0].Model != want.Model || got[0].Status != want.Status ||
 		got[0].AvgTTFTMs != want.AvgTTFTMs || got[0].ErrorCount != want.ErrorCount ||
-		got[0].BackoffCount != want.BackoffCount || got[0].LastRule != want.LastRule || !got[0].UnhealthyUntil.Equal(until) ||
+		got[0].BackoffCount != want.BackoffCount || got[0].LastSlug != want.LastSlug || !got[0].UnhealthyUntil.Equal(until) ||
 		!got[0].LastErrorAt.Equal(lastError) || !got[0].LastSuccessAt.Equal(lastSuccess) {
 		t.Fatalf("health snapshot = %#v, want %#v", got[0], want)
 	}
@@ -91,7 +91,7 @@ func TestOpen_migrates_legacy_provider_health_schema(t *testing.T) {
 	until := time.Date(2026, 7, 19, 18, 1, 0, 0, time.UTC)
 	err = st.SaveHealth(store.HealthSnapshot{
 		Provider: "legacy", Model: "legacy-model", Status: "unhealthy", AvgTTFTMs: 99,
-		ErrorCount: 3, BackoffCount: 2, LastRule: "legacy-rule", UnhealthyUntil: &until,
+		ErrorCount: 3, BackoffCount: 2, LastSlug: "legacy-rule", UnhealthyUntil: &until,
 		LastErrorAt: &legacyError, LastSuccessAt: &legacySuccess,
 	})
 
@@ -108,7 +108,7 @@ func TestOpen_migrates_legacy_provider_health_schema(t *testing.T) {
 	}
 	got := rows[0]
 	if got.Provider != "legacy" || got.Model != "legacy-model" || got.Status != "unhealthy" || got.AvgTTFTMs != 99 ||
-		got.ErrorCount != 3 || got.BackoffCount != 2 || got.LastRule != "legacy-rule" || got.UnhealthyUntil == nil || !got.UnhealthyUntil.Equal(until) ||
+		got.ErrorCount != 3 || got.BackoffCount != 2 || got.LastSlug != "legacy-rule" || got.UnhealthyUntil == nil || !got.UnhealthyUntil.Equal(until) ||
 		got.LastErrorAt == nil || !got.LastErrorAt.Equal(time.Date(2026, 7, 19, 17, 0, 0, 0, time.UTC)) ||
 		got.LastSuccessAt == nil || !got.LastSuccessAt.Equal(time.Date(2026, 7, 19, 17, 30, 0, 0, time.UTC)) {
 		t.Fatalf("migrated health snapshot = %#v", got)

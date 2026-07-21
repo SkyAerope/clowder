@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS requests (
     status_code INTEGER,
     ttft_ms     INTEGER,
     latency_ms  INTEGER,
-    matched_rule TEXT,
+	matched_slug TEXT,
     error_msg   TEXT,
     error_fingerprint TEXT,
     created_at  TEXT DEFAULT (datetime('now'))
@@ -49,7 +49,7 @@ CREATE INDEX IF NOT EXISTS idx_requests_created ON requests(created_at);
 CREATE TABLE IF NOT EXISTS captures (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     request_id  INTEGER NOT NULL,
-    matched_rule TEXT NOT NULL,
+	matched_slug TEXT NOT NULL,
     fingerprint TEXT,
     provider    TEXT NOT NULL,
     model       TEXT,
@@ -60,7 +60,6 @@ CREATE TABLE IF NOT EXISTS captures (
     redacted    INTEGER DEFAULT 0,
     created_at  TEXT DEFAULT (datetime('now'))
 );
-CREATE INDEX IF NOT EXISTS idx_captures_rule ON captures(matched_rule);
 CREATE INDEX IF NOT EXISTS idx_captures_fingerprint ON captures(fingerprint);
 
 CREATE TABLE IF NOT EXISTS provider_health (
@@ -73,7 +72,7 @@ CREATE TABLE IF NOT EXISTS provider_health (
     unhealthy_until TEXT,
     last_error_at  TEXT,
 	    last_success_at     TEXT,
-	    last_rule TEXT,
+	    last_slug TEXT,
     PRIMARY KEY (provider, model)
 );
 `
@@ -100,14 +99,65 @@ func Open(dir string) (*Store, error) {
 	for _, migration := range []string{
 		`ALTER TABLE provider_health ADD COLUMN backoff_count INTEGER DEFAULT 0`,
 		`ALTER TABLE provider_health ADD COLUMN unhealthy_until TEXT`,
-		`ALTER TABLE provider_health ADD COLUMN last_rule TEXT`,
 	} {
 		if _, err := db.Exec(migration); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
 			db.Close()
 			return nil, fmt.Errorf("migrate provider_health: %w", err)
 		}
 	}
+	for _, table := range [][3]string{
+		{"requests", "matched_rule", "matched_slug"},
+		{"captures", "matched_rule", "matched_slug"},
+		{"provider_health", "last_rule", "last_slug"},
+	} {
+		oldExists, err := columnExists(db, table[0], table[1])
+		if err != nil {
+			db.Close()
+			return nil, fmt.Errorf("inspect %s: %w", table[0], err)
+		}
+		newExists, err := columnExists(db, table[0], table[2])
+		if err != nil {
+			db.Close()
+			return nil, fmt.Errorf("inspect %s: %w", table[0], err)
+		}
+		if oldExists && !newExists {
+			if _, err := db.Exec(fmt.Sprintf("ALTER TABLE %s RENAME COLUMN %s TO %s", table[0], table[1], table[2])); err != nil {
+				db.Close()
+				return nil, fmt.Errorf("migrate %s.%s: %w", table[0], table[1], err)
+			}
+		} else if !oldExists && !newExists && table[0] == "provider_health" {
+			if _, err := db.Exec("ALTER TABLE provider_health ADD COLUMN last_slug TEXT"); err != nil {
+				db.Close()
+				return nil, fmt.Errorf("add provider_health.last_slug: %w", err)
+			}
+		}
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_captures_slug ON captures(matched_slug)`); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("create captures slug index: %w", err)
+	}
 	return &Store{db: db}, nil
+}
+
+func columnExists(db *sql.DB, table, column string) (bool, error) {
+	rows, err := db.Query("PRAGMA table_info(" + table + ")")
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull, pk int
+		var defaultValue sql.NullString
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &pk); err != nil {
+			return false, err
+		}
+		if name == column {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }
 
 // Close 关闭数据库。
