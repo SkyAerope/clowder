@@ -11,14 +11,14 @@ import (
 
 // rawRule 是 rules.yaml / manifest rules 的原始结构。
 type rawRule struct {
-	Slug        string
-	Name        string           `yaml:"name"`
-	Priority    *int             `yaml:"priority"`
-	Enabled     *bool            `yaml:"enabled"`
-	When        map[string]any   `yaml:"when"`
-	If          map[string]any   `yaml:"if"`
-	Do          []map[string]any `yaml:"do"`
-	Route       any              `yaml:"route"`
+	Slug     string
+	Name     string           `yaml:"name"`
+	Priority *int             `yaml:"priority"`
+	Enabled  *bool            `yaml:"enabled"`
+	When     map[string]any   `yaml:"when"`
+	If       map[string]any   `yaml:"if"`
+	Do       []map[string]any `yaml:"do"`
+	Route    any              `yaml:"route"`
 }
 
 // ParseRules 从 YAML 字节解析规则列表（rules.yaml 顶层为 {rules: [...]}）。
@@ -100,11 +100,11 @@ func buildRule(rr rawRule, source int) (*Rule, error) {
 		return nil, fmt.Errorf("missing slug")
 	}
 	r := &Rule{
-		Slug:        rr.Slug,
-		Name:        rr.Name,
-		Priority:    100,
-		Source:      source,
-		Enabled:     rr.Enabled == nil || *rr.Enabled,
+		Slug:     rr.Slug,
+		Name:     rr.Name,
+		Priority: 100,
+		Source:   source,
+		Enabled:  rr.Enabled == nil || *rr.Enabled,
 	}
 	if rr.Priority != nil {
 		r.Priority = *rr.Priority
@@ -117,11 +117,16 @@ func buildRule(rr rawRule, source int) (*Rule, error) {
 		return nil, err
 	}
 	r.If = conds
+	actionKinds := make(map[string]struct{}, len(rr.Do))
 	for _, dm := range rr.Do {
 		a, err := parseAction(dm)
 		if err != nil {
 			return nil, err
 		}
+		if _, exists := actionKinds[a.Kind]; exists {
+			return nil, fmt.Errorf("duplicate action %q", a.Kind)
+		}
+		actionKinds[a.Kind] = struct{}{}
 		r.Do = append(r.Do, a)
 	}
 	rt, err := parseRoute(rr.Route)

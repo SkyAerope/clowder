@@ -31,7 +31,7 @@ func parseAction(m map[string]any) (Action, error) {
 					for _, f := range fs {
 						s := toString(f)
 						switch s {
-						case "request_headers", "request_body", "response_headers", "response_body", "status_code":
+						case "request_headers", "request_body", "response_headers", "response_body":
 							a.Fields = append(a.Fields, s)
 						default:
 							return a, fmt.Errorf("capture: invalid field %q", s)

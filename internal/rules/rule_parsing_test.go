@@ -1,6 +1,9 @@
 package rules
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestInvalidRegexRejected(t *testing.T) {
 	_, err := ParseRules([]byte(`
@@ -61,5 +64,40 @@ func TestParseRules_rejects_inline_slug_field_schema(t *testing.T) {
 	// Then
 	if err == nil {
 		t.Fatal("inline slug field schema must be rejected")
+	}
+}
+
+func TestParseRules_rejects_duplicate_action_kinds(t *testing.T) {
+	// Given
+	data := []byte(`rules:
+  - duplicate-capture:
+      do:
+        - capture: { fields: [request_body] }
+        - capture: { fields: [response_body] }
+`)
+
+	// When
+	_, err := ParseRules(data, SourceUserFile)
+
+	// Then
+	if err == nil || !strings.Contains(err.Error(), `duplicate action "capture"`) {
+		t.Fatalf("ParseRules() error = %v, want duplicate capture rejection", err)
+	}
+}
+
+func TestParseRules_rejects_status_code_capture_field(t *testing.T) {
+	// Given
+	data := []byte(`rules:
+  - capture-status:
+      do:
+        - capture: { fields: [status_code] }
+`)
+
+	// When
+	_, err := ParseRules(data, SourceUserFile)
+
+	// Then
+	if err == nil || !strings.Contains(err.Error(), `capture: invalid field "status_code"`) {
+		t.Fatalf("ParseRules() error = %v, want status_code capture rejection", err)
 	}
 }

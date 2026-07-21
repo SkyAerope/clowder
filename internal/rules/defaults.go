@@ -39,7 +39,7 @@ rules:
       priority: 8000
       when: { status_code: 400-499 }
       do:
-        - capture: { fields: [response_headers, response_body, status_code] }
+        - capture: { fields: [response_headers, response_body] }
       route: passthrough
 
   - default-5xx-retry:
@@ -47,7 +47,7 @@ rules:
       priority: 8000
       when: { status_code: 500-599 }
       do:
-        - capture: { fields: [response_headers, response_body, status_code] }
+        - capture: { fields: [response_headers, response_body] }
       route: next_provider
 
   - default-transport-retry:
@@ -55,7 +55,7 @@ rules:
       priority: 8000
       when: { transport: true }
       do:
-        - capture: { fields: [response_headers, response_body, status_code] }
+        - capture: { fields: [response_headers, response_body] }
       route: next_provider
 
   - default-ttft-timeout:
@@ -63,7 +63,7 @@ rules:
       priority: 8000
       when: { ttft_over_ms: 7000 }
       do:
-        - capture: { fields: [response_headers, response_body, status_code] }
+        - capture: { fields: [response_headers, response_body] }
       route: next_provider
 
   - default-catch-all:
@@ -71,7 +71,7 @@ rules:
       priority: 10000
       when: { error: true }
       do:
-        - capture: { fields: [response_headers, response_body, status_code] }
+        - capture: { fields: [response_headers, response_body] }
       route: passthrough
 `
 
@@ -117,7 +117,7 @@ const PresetRulesYAML = `rules:
       priority: 8000
       when: { status_code: 400-499 }
       do:
-        - capture: { fields: [response_headers, response_body, status_code] }
+        - capture: { fields: [response_headers, response_body] }
       route: passthrough
 
   - default-5xx-retry:
@@ -125,7 +125,7 @@ const PresetRulesYAML = `rules:
       priority: 8000
       when: { status_code: 500-599 }
       do:
-        - capture: { fields: [response_headers, response_body, status_code] }
+        - capture: { fields: [response_headers, response_body] }
       route: next_provider
 
   - default-ttft-timeout:
@@ -133,7 +133,7 @@ const PresetRulesYAML = `rules:
       priority: 8000
       when: { ttft_over_ms: 7000 }
       do:
-        - capture: { fields: [response_headers, response_body, status_code] }
+        - capture: { fields: [response_headers, response_body] }
       route: next_provider
 
   - default-catch-all:
@@ -141,7 +141,7 @@ const PresetRulesYAML = `rules:
       priority: 10000
       when: { error: true }
       do:
-        - capture: { fields: [response_headers, response_body, status_code] }
+        - capture: { fields: [response_headers, response_body] }
       route: passthrough
 `
 
