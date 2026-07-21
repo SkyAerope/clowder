@@ -61,6 +61,11 @@ func TestOpen_migrates_legacy_provider_health_schema(t *testing.T) {
 	)`); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := db.Exec(`INSERT INTO provider_health
+		(provider, model, status, avg_ttft_ms, error_count, last_error_at, last_success_at)
+		VALUES ('legacy', 'legacy-model', 'healthy', 88, 2, '2026-07-19T17:00:00Z', '2026-07-19T17:30:00Z')`); err != nil {
+		t.Fatal(err)
+	}
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -71,13 +76,41 @@ func TestOpen_migrates_legacy_provider_health_schema(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	until := time.Now().Add(time.Minute)
+	migrated, err := st.ListHealth()
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyError := time.Date(2026, 7, 19, 17, 0, 0, 0, time.UTC)
+	legacySuccess := time.Date(2026, 7, 19, 17, 30, 0, 0, time.UTC)
+	if len(migrated) != 1 || migrated[0].Provider != "legacy" || migrated[0].Model != "legacy-model" ||
+		migrated[0].Status != "healthy" || migrated[0].AvgTTFTMs != 88 || migrated[0].ErrorCount != 2 ||
+		migrated[0].LastErrorAt == nil || !migrated[0].LastErrorAt.Equal(legacyError) ||
+		migrated[0].LastSuccessAt == nil || !migrated[0].LastSuccessAt.Equal(legacySuccess) {
+		t.Fatalf("legacy health snapshot after migration = %#v", migrated)
+	}
+	until := time.Date(2026, 7, 19, 18, 1, 0, 0, time.UTC)
 	err = st.SaveHealth(store.HealthSnapshot{
-		Provider: "mock", Status: "unhealthy", BackoffCount: 2, UnhealthyUntil: &until,
+		Provider: "legacy", Model: "legacy-model", Status: "unhealthy", AvgTTFTMs: 99,
+		ErrorCount: 3, BackoffCount: 2, LastRule: "legacy-rule", UnhealthyUntil: &until,
+		LastErrorAt: &legacyError, LastSuccessAt: &legacySuccess,
 	})
 
 	// Then
 	if err != nil {
 		t.Fatal(err)
+	}
+	rows, err := st.ListHealth()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("migrated health rows = %d, want 1", len(rows))
+	}
+	got := rows[0]
+	if got.Provider != "legacy" || got.Model != "legacy-model" || got.Status != "unhealthy" || got.AvgTTFTMs != 99 ||
+		got.ErrorCount != 3 || got.BackoffCount != 2 || got.LastRule != "legacy-rule" || got.UnhealthyUntil == nil || !got.UnhealthyUntil.Equal(until) ||
+		got.LastErrorAt == nil || !got.LastErrorAt.Equal(time.Date(2026, 7, 19, 17, 0, 0, 0, time.UTC)) ||
+		got.LastSuccessAt == nil || !got.LastSuccessAt.Equal(time.Date(2026, 7, 19, 17, 30, 0, 0, time.UTC)) {
+		t.Fatalf("migrated health snapshot = %#v", got)
 	}
 }
