@@ -62,6 +62,10 @@ function openDialog(g: ErrorGroup) {
   dialogOpen.value = true
 }
 
+function openRequests(g: ErrorGroup): void {
+  router.push({ path: '/requests', query: { fingerprint: g.fingerprint, from: '', to: '' } })
+}
+
 watch(() => dialog.value?.draft, (draft) => {
   if (!dialog.value || dialogTab.value !== 'visual' || !draft?.[0]) return
   normalizeRule(draft[0])
@@ -155,8 +159,8 @@ onMounted(load)
             <TableCell>
               <div class="flex justify-end gap-1">
                 <Tooltip>
-                  <TooltipTrigger as-child><Button variant="ghost" size="icon-sm" aria-label="查看抓取记录" @click="router.push(`/captures?fingerprint=${g.fingerprint}`)"><Eye /></Button></TooltipTrigger>
-                  <TooltipContent>查看抓取记录</TooltipContent>
+                  <TooltipTrigger as-child><Button variant="ghost" size="icon-sm" aria-label="查看关联请求" @click="openRequests(g)"><Eye /></Button></TooltipTrigger>
+                  <TooltipContent>查看关联请求</TooltipContent>
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger as-child><Button variant="ghost" size="icon-sm" class="text-primary" aria-label="添加为规则" @click="openDialog(g)"><BookmarkPlus /></Button></TooltipTrigger>
