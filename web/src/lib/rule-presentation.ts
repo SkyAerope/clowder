@@ -42,10 +42,10 @@ export const CHECK_STATUS: Opt[] = [
   { v: 'active', label: '可用 active' }, { v: 'invalid', label: '无效 invalid' },
   { v: 'rate_limited', label: '限流 rate_limited' }, { v: 'error', label: '错误 error' },
 ]
-export const CAPTURE_FIELDS = ['request_headers', 'request_body', 'response_headers', 'response_body', 'status_code']
+export const CAPTURE_FIELDS = ['request_headers', 'request_body', 'response_headers', 'response_body']
 export const CAPTURE_LABELS: Record<string, string> = {
   request_headers: '请求头', request_body: '请求体', response_headers: '响应头',
-  response_body: '响应体', status_code: 'Status Code',
+  response_body: '响应体',
 }
 export const TYPE_LABELS: Record<string, string> = { upstream: '上游', check: '探活', schedule: '定时' }
 

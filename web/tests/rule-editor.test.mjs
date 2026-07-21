@@ -3,7 +3,13 @@ import test, { after } from 'node:test'
 import { createServer } from 'vite'
 
 const vite = await createServer({ server: { middlewareMode: true }, appType: 'custom' })
-const { parseRuleFragment, parseRules, serializeRules } = await vite.ssrLoadModule('/src/lib/rule-editor.ts')
+const {
+  blankRule,
+  parseRuleFragment,
+  parseRules,
+  serializeRules,
+} = await vite.ssrLoadModule('/src/lib/rule-editor.ts')
+const { actionKindDisabled, nextActionKind } = await vite.ssrLoadModule('/src/lib/rule-constraints.ts')
 after(() => vite.close())
 
 test('parses an independently authored indented error-rule fragment', () => {
@@ -88,7 +94,7 @@ test('normalizes action payload variants from YAML', () => {
         - mark_key: rate_limited
         - check_key: { chain: true }
         - check_keys: {}
-        - capture: { fields: [request_body, status_code] }
+        - capture: { fields: [request_body, response_body] }
         - mark_provider_unhealthy: {}
       route: next_key
 `
@@ -102,7 +108,7 @@ test('normalizes action payload variants from YAML', () => {
     { kind: 'mark_key', mark_status: 'rate_limited', chain: false, fields: [] },
     { kind: 'check_key', mark_status: 'invalid', chain: true, fields: [] },
     { kind: 'check_keys', mark_status: 'invalid', chain: false, fields: [] },
-    { kind: 'capture', mark_status: 'invalid', chain: false, fields: ['request_body', 'status_code'] },
+    { kind: 'capture', mark_status: 'invalid', chain: false, fields: ['request_body', 'response_body'] },
     { kind: 'mark_provider_unhealthy', mark_status: 'invalid', chain: false, fields: [] },
   ])
 })
@@ -162,4 +168,18 @@ test('preserves disabled builtin identifiers through a YAML round trip', () => {
 
   // Then
   assert.deepEqual([...reparsed.disabledBuiltins], ['rate-limit', 'transport-error'])
+})
+
+test('disables action kinds already used by another action', () => {
+  // Given
+  const rule = blankRule()
+  const capture = { kind: 'capture', mark_status: 'invalid', chain: false, fields: [] }
+  const markKey = { kind: 'mark_key', mark_status: 'invalid', chain: false, fields: [] }
+  rule.dos.push(capture, markKey)
+
+  // When / Then
+  assert.equal(actionKindDisabled(rule, capture, 'capture'), false)
+  assert.equal(actionKindDisabled(rule, capture, 'mark_key'), true)
+  assert.equal(actionKindDisabled(rule, capture, 'check_key'), false)
+  assert.equal(nextActionKind(rule, ['mark_key', 'mark_model_unhealthy', 'capture']), 'mark_model_unhealthy')
 })

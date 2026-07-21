@@ -1,4 +1,4 @@
-import type { EditRule, WhenClause } from './rule-model'
+import type { EditAction, EditRule, WhenClause } from './rule-model'
 
 export function whenHasTTFT(rule: EditRule): boolean {
   return rule.whenType === 'upstream' && rule.whenClauses.some((clause) => clause.field === 'ttft_over_ms')
@@ -11,6 +11,21 @@ export function whenFieldDisabled(rule: EditRule, clause: WhenClause, value: str
   return value === 'ttft_over_ms'
     ? others.some((field) => field === 'ttft_over_ms' || exclusive.includes(field))
     : exclusive.includes(value) && others.includes('ttft_over_ms')
+}
+
+export function actionKindDisabled(rule: EditRule, action: EditAction, kind: string): boolean {
+  if (kind === action.kind) return false
+  const others = rule.dos.filter((a) => a !== action).map((a) => a.kind)
+  return others.includes(kind)
+}
+
+export function nextActionKind(rule: EditRule, kinds: readonly string[]): string | undefined {
+  const used = new Set(rule.dos.map((a) => a.kind))
+  return kinds.find((k) => !used.has(k))
+}
+
+export function hasUnusedActionKind(rule: EditRule, kinds: readonly string[]): boolean {
+  return nextActionKind(rule, kinds) !== undefined
 }
 
 export function routeDisabled(rule: EditRule, value: string): boolean {
