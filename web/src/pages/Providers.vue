@@ -52,7 +52,7 @@ onMounted(load)
     </Alert>
 
     <div class="ring-foreground/10 bg-card overflow-x-auto rounded-xl ring-1">
-      <Table>
+      <Table class="min-w-[42rem]">
         <TableHeader>
           <TableRow>
             <TableHead>提供商</TableHead><TableHead>状态</TableHead><TableHead>可用 Key</TableHead>
