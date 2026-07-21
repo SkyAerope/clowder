@@ -97,16 +97,16 @@ func TestRetrySelectsRuleAfterOneKeySwitch(t *testing.T) {
 	defer up.Close()
 	rulesYAML := `
 rules:
-  - name: stop-after-key-switch
-    priority: 50
-    when: { status_code: 429 }
-    if:
-      key_switches: { gte: 1 }
-    route: passthrough
-  - name: switch-key
-    priority: 100
-    when: { status_code: 429 }
-    route: next_key
+  - stop-after-key-switch:
+      priority: 50
+      when: { status_code: 429 }
+      if:
+        key_switches: { gte: 1 }
+      route: passthrough
+  - switch-key:
+      priority: 100
+      when: { status_code: 429 }
+      route: next_key
 `
 	app, handler := setup(t, up.URL, []string{"k1", "k2"}, rulesYAML)
 
@@ -121,7 +121,7 @@ rules:
 	if len(logs) != 2 {
 		t.Fatalf("request logs = %d, want 2", len(logs))
 	}
-	if logs[0].MatchedRule != "stop-after-key-switch" || logs[1].MatchedRule != "switch-key" {
-		t.Fatalf("matched rules = %q, %q", logs[0].MatchedRule, logs[1].MatchedRule)
+	if logs[0].MatchedSlug != "stop-after-key-switch" || logs[1].MatchedSlug != "switch-key" {
+		t.Fatalf("matched slugs = %q, %q", logs[0].MatchedSlug, logs[1].MatchedSlug)
 	}
 }

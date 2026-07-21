@@ -24,14 +24,14 @@ func TestRetryNextKeyOn401(t *testing.T) {
 
 	rulesYAML := `
 rules:
-  - name: kill-401
-    when: { status_code: 401 }
-    do: [ { mark_key: invalid } ]
-    route: next_key
-  - name: catch-all
-    priority: 10000
-    when: { error: true }
-    route: passthrough
+  - kill-401:
+      when: { status_code: 401 }
+      do: [ { mark_key: invalid } ]
+      route: next_key
+  - catch-all:
+      priority: 10000
+      when: { error: true }
+      route: passthrough
 `
 	a, h := setup(t, up.URL, []string{"bad-key", "good-key"}, rulesYAML)
 
@@ -51,8 +51,8 @@ rules:
 	if logs[0].AttemptNo != 2 || logs[1].AttemptNo != 1 {
 		t.Fatalf("attempt numbers wrong: %d, %d", logs[0].AttemptNo, logs[1].AttemptNo)
 	}
-	if logs[1].MatchedRule != "kill-401" {
-		t.Fatalf("attempt 1 matched rule = %q, want kill-401", logs[1].MatchedRule)
+	if logs[1].MatchedSlug != "kill-401" {
+		t.Fatalf("attempt 1 matched slug = %q, want kill-401", logs[1].MatchedSlug)
 	}
 	if logs[0].TraceID != logs[1].TraceID {
 		t.Fatal("retry chain must share trace_id")
@@ -92,13 +92,13 @@ func TestRaceFirstByteWins(t *testing.T) {
 
 	rulesYAML := `
 rules:
-  - name: race-500
-    when: { status_code: 500 }
-    route: [retry_same, next_key]
-  - name: catch-all
-    priority: 10000
-    when: { error: true }
-    route: passthrough
+  - race-500:
+      when: { status_code: 500 }
+      route: [retry_same, next_key]
+  - catch-all:
+      priority: 10000
+      when: { error: true }
+      route: passthrough
 `
 	a, h := setup(t, up.URL, []string{"k1", "k2"}, rulesYAML)
 

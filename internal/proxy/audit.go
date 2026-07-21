@@ -16,11 +16,11 @@ func (s *Server) finalizeAttempt(chain *chainState, cand app.Candidate, keyID in
 	ev.ProviderSwitches = chain.provSwitches
 
 	matched := s.App.Engine.Match(ev)
-	matchedName := ""
+	matchedSlug := ""
 	if matched != nil {
-		matchedName = matched.Name
+		matchedSlug = matched.Slug
 	}
-	reqID := s.logAttempt(chain, cand, keyID, o, matchedName, ev)
+	reqID := s.logAttempt(chain, cand, keyID, o, matchedSlug, ev)
 	if matched != nil {
 		s.App.RunActions(&app.ActionContext{
 			Rule: matched, Event: ev, KeyID: keyID, RequestID: reqID,
@@ -35,14 +35,14 @@ func (s *Server) finalizeAttempt(chain *chainState, cand app.Candidate, keyID in
 
 // logAttempt 写 requests 表。
 func (s *Server) logAttempt(chain *chainState, cand app.Candidate, keyID int64,
-	o *attemptOutcome, matchedRule string, ev *rules.Event) int64 {
+	o *attemptOutcome, matchedSlug string, ev *rules.Event) int64 {
 	rl := &store.RequestLog{
 		TraceID:     chain.traceID,
 		AttemptNo:   chain.attemptNo,
 		KeyID:       &keyID,
 		Provider:    cand.Provider,
 		Model:       cand.Canonical,
-		MatchedRule: matchedRule,
+		MatchedSlug: matchedSlug,
 	}
 	if ev.StatusCode != 0 {
 		rl.StatusCode = &ev.StatusCode
