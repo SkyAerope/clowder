@@ -8,26 +8,40 @@ after(() => vite.close())
 
 test('parses an independently authored indented error-rule fragment', () => {
   // Given
-  const source = `  - name: known-featherless-71db6124
-    description: 已知错误
-    priority: 50
-    when:
-      provider: featherless
-    route: next_key
+  const source = `  - known-featherless-71db6124:
+      name: 已知错误
+      priority: 50
+      when:
+        provider: featherless
+      route: next_key
 `
 
   // When
   const parsed = parseRuleFragment(source)
 
   // Then
-  assert.equal(parsed.name, 'known-featherless-71db6124')
+  assert.equal(parsed.slug, 'known-featherless-71db6124')
+  assert.equal(parsed.name, '已知错误')
   assert.equal(parsed.whenClauses[0]?.text, 'featherless')
   assert.equal(parsed.routeSingle, 'next_key')
 })
 
+test('serializes rule name before slug using the new schema', () => {
+  // Given
+  const source = `rules:\n  - catch-all:\n      name: 兜底规则\n      when: { error: true }\n      route: passthrough\n`
+
+  // When
+  const serialized = serializeRules(parseRules(source).rules)
+
+  // Then
+  assert.match(serialized, /- catch-all:\n\s+name: 兜底规则/)
+  assert.doesNotMatch(serialized, /slug:/)
+  assert.doesNotMatch(serialized, /description:/)
+})
+
 test('preserves the boolean error trigger through a YAML round trip', () => {
   // Given
-  const source = `rules:\n  - name: catch-all\n    when: { error: true }\n    route: passthrough\n`
+  const source = `rules:\n  - catch-all:\n      when: { error: true }\n      route: passthrough\n`
 
   // When
   const parsed = parseRules(source)
@@ -41,14 +55,14 @@ test('preserves the boolean error trigger through a YAML round trip', () => {
 test('normalizes upstream trigger variants from YAML', () => {
   // Given
   const source = `rules:
-  - name: normalized-triggers
-    when:
-      status_code: 5xx
-      transport: true
-      body_regex: rate.*limit
-      ttft_over_ms: 2500
-      error: true
-    route: next_provider
+  - normalized-triggers:
+      when:
+        status_code: 5xx
+        transport: true
+        body_regex: rate.*limit
+        ttft_over_ms: 2500
+        error: true
+      route: next_provider
 `
 
   // When
@@ -68,15 +82,15 @@ test('normalizes upstream trigger variants from YAML', () => {
 test('normalizes action payload variants from YAML', () => {
   // Given
   const source = `rules:
-  - name: normalized-actions
-    when: { error: true }
-    do:
-      - mark_key: rate_limited
-      - check_key: { chain: true }
-      - check_keys: {}
-      - capture: { fields: [request_body, status_code] }
-      - mark_provider_unhealthy: {}
-    route: next_key
+  - normalized-actions:
+      when: { error: true }
+      do:
+        - mark_key: rate_limited
+        - check_key: { chain: true }
+        - check_keys: {}
+        - capture: { fields: [request_body, status_code] }
+        - mark_provider_unhealthy: {}
+      route: next_key
 `
 
   // When
@@ -96,12 +110,12 @@ test('normalizes action payload variants from YAML', () => {
 test('normalizes both race route encodings through a YAML round trip', () => {
   // Given
   const source = `rules:
-  - name: direct-race
-    when: { error: true }
-    route: [next_key, next_provider]
-  - name: nested-race
-    when: { error: true }
-    route: { race: [retry_same, next_key] }
+  - direct-race:
+      when: { error: true }
+      route: [next_key, next_provider]
+  - nested-race:
+      when: { error: true }
+      route: { race: [retry_same, next_key] }
 `
 
   // When
@@ -132,7 +146,7 @@ test('ignores unknown document fields and non-list rules', () => {
 
 test('rejects invalid YAML', () => {
   // Given
-  const source = `rules:\n  - name: [unterminated\n`
+  const source = `rules:\n  - invalid: [unterminated\n`
 
   // When / Then
   assert.throws(() => parseRules(source))

@@ -15,6 +15,10 @@ function record(value: unknown): Record<string, unknown> {
   return Object.fromEntries(Object.entries(value))
 }
 
+function isRecord(value: unknown): boolean {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
 function text(value: unknown, fallback = ''): string {
   return value == null ? fallback : String(value)
 }
@@ -24,10 +28,13 @@ function normalizeStatus(value: string): string {
 }
 
 export function rawToEdit(raw: unknown): EditRule {
-  const source = record(raw)
+  const entry = record(raw)
+  const keys = Object.keys(entry)
+  const keyed = keys.length === 1 && isRecord(entry[keys[0]])
+  const source = keyed ? record(entry[keys[0]]) : entry
   const rule = blankRule()
+  rule.slug = text(source.slug, keyed ? keys[0] : '')
   rule.name = text(source.name)
-  rule.description = text(source.description)
   rule.priority = typeof source.priority === 'number' ? source.priority : 100
   rule.enabled = source.enabled !== false
   const when = record(source.when)
@@ -79,7 +86,7 @@ export function rawToEdit(raw: unknown): EditRule {
 
 export function detailToEdit(view: RuleView): EditRule {
   const rule = blankRule()
-  rule.name = view.name; rule.description = view.description; rule.priority = view.priority; rule.enabled = view.enabled
+  rule.slug = view.slug; rule.name = view.name; rule.priority = view.priority; rule.enabled = view.enabled
   rule.whenType = view.type === 'check' || view.type === 'schedule' ? view.type : 'upstream'
   const when = record(view.detail?.when)
   if (rule.whenType === 'schedule') { rule.cron = text(when.cron); rule.scope_provider = text(when.scope_provider) }
@@ -98,7 +105,6 @@ export function detailToEdit(view: RuleView): EditRule {
 
 function ruleToObject(rule: EditRule): Record<string, unknown> {
   const output: Record<string, unknown> = { name: rule.name }
-  if (rule.description) output.description = rule.description
   if (rule.priority !== 100) output.priority = rule.priority
   if (!rule.enabled) output.enabled = false
   const when: Record<string, unknown> = {}
@@ -128,7 +134,7 @@ function ruleToObject(rule: EditRule): Record<string, unknown> {
     return { [action.kind]: {} }
   })
   output.route = rule.routeMode === 'race' ? { race: rule.routeRace.filter(Boolean) } : rule.routeSingle
-  return output
+  return { [rule.slug]: output }
 }
 
 export function draftToObject(list: EditRule[], disabledBuiltins: Iterable<string> = []): Record<string, unknown> {
