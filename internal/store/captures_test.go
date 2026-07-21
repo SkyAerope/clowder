@@ -116,3 +116,39 @@ func captureIDs(captures []*store.Capture) []int64 {
 	}
 	return ids
 }
+
+func TestCaptures_by_request_returns_latest_full_capture_per_request(t *testing.T) {
+	// Given
+	st := newTestStore(t)
+	captures := []*store.Capture{
+		{RequestID: 10, MatchedSlug: "retry", Provider: "alpha", RequestHeaders: `{"a":"1"}`, ResponseBody: "old"},
+		{RequestID: 10, MatchedSlug: "retry", Provider: "alpha", RequestBody: "new-body", ResponseHeaders: `{"h":"2"}`, ResponseBody: "new"},
+		{RequestID: 11, MatchedSlug: "retry", Provider: "alpha", RequestBody: "only-body"},
+	}
+	for _, capture := range captures {
+		if _, err := st.InsertCapture(capture, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// When
+	byRequest, err := st.CapturesByRequest([]int64{10, 11, 12})
+
+	// Then
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(byRequest) != 2 {
+		t.Fatalf("captures = %#v, want only requests 10 and 11", byRequest)
+	}
+	latest := byRequest[10]
+	if latest == nil || latest.RequestBody != "new-body" || latest.RequestHeaders != "" || latest.ResponseBody != "new" {
+		t.Fatalf("latest capture for 10 = %#v", latest)
+	}
+	if only := byRequest[11]; only == nil || only.RequestBody != "only-body" {
+		t.Fatalf("capture for 11 = %#v", only)
+	}
+	if _, ok := byRequest[12]; ok {
+		t.Fatalf("request 12 has no capture, want absent, got %#v", byRequest[12])
+	}
+}

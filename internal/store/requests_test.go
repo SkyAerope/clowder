@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/SkyAerope/clowder/internal/store"
 )
@@ -27,7 +28,7 @@ func TestRequests_list_and_trace_apply_documented_order_and_pagination(t *testin
 	}
 
 	// When
-	page, err := st.ListRequests(2, 1)
+	page, err := st.ListRequests(store.RequestFilters{}, 2, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,6 +52,97 @@ func TestRequests_list_and_trace_apply_documented_order_and_pagination(t *testin
 	second := trace[1]
 	if second.TTFTMs == nil || *second.TTFTMs != ttft || second.LatencyMs == nil || *second.LatencyMs != latency {
 		t.Fatalf("second attempt = %#v", second)
+	}
+}
+
+func TestRequests_filter_combines_all_fields_with_inclusive_time_bounds(t *testing.T) {
+	// Given
+	st := newTestStore(t)
+	status429, status500 := 429, 500
+	target := &store.RequestLog{
+		TraceID: "target", AttemptNo: 1, Provider: "alpha", Model: "m1", StatusCode: &status429,
+		MatchedSlug: "retry", ErrorMsg: "limited", ErrorFingerprint: "fp-rate-%_target",
+	}
+	fixtures := []*store.RequestLog{
+		target,
+		{TraceID: "before", AttemptNo: 1, Provider: "alpha", Model: "m1", StatusCode: &status429, MatchedSlug: "retry", ErrorMsg: "limited", ErrorFingerprint: "fp-rate-%_before"},
+		{TraceID: "after", AttemptNo: 1, Provider: "alpha", Model: "m1", StatusCode: &status429, MatchedSlug: "retry", ErrorMsg: "limited", ErrorFingerprint: "fp-rate-%_after"},
+		{TraceID: "provider", AttemptNo: 1, Provider: "beta", Model: "m1", StatusCode: &status429, MatchedSlug: "retry", ErrorMsg: "limited", ErrorFingerprint: "fp-rate-%_provider"},
+		{TraceID: "model", AttemptNo: 1, Provider: "alpha", Model: "m2", StatusCode: &status429, MatchedSlug: "retry", ErrorMsg: "limited", ErrorFingerprint: "fp-rate-%_model"},
+		{TraceID: "status", AttemptNo: 1, Provider: "alpha", Model: "m1", StatusCode: &status500, MatchedSlug: "retry", ErrorMsg: "limited", ErrorFingerprint: "fp-rate-%_status"},
+		{TraceID: "rule", AttemptNo: 1, Provider: "alpha", Model: "m1", StatusCode: &status429, MatchedSlug: "fallback", ErrorMsg: "limited", ErrorFingerprint: "fp-rate-%_rule"},
+		{TraceID: "fingerprint", AttemptNo: 1, Provider: "alpha", Model: "m1", StatusCode: &status429, MatchedSlug: "retry", ErrorMsg: "limited", ErrorFingerprint: "fp-rate-XX"},
+	}
+	ids := make([]int64, 0, len(fixtures))
+	for _, fixture := range fixtures {
+		id, err := st.InsertRequest(fixture)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	createdAt := []string{
+		"2026-07-20 12:00:00", "2026-07-20 11:59:59", "2026-07-20 12:00:01",
+		"2026-07-20 12:00:00", "2026-07-20 12:00:00", "2026-07-20 12:00:00",
+		"2026-07-20 12:00:00", "2026-07-20 12:00:00",
+	}
+	for i, id := range ids {
+		if _, err := st.DB().Exec(`UPDATE requests SET created_at=? WHERE id=?`, createdAt[i], id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bound := time.Date(2026, time.July, 20, 12, 0, 0, 0, time.UTC)
+	isError := true
+
+	// When
+	logs, err := st.ListRequests(store.RequestFilters{
+		From:        &bound,
+		To:          &bound,
+		Provider:    "alpha",
+		Model:       "m1",
+		StatusCode:  &status429,
+		Error:       &isError,
+		MatchedSlug: "retry",
+		Fingerprint: "target",
+	}, 50, 0)
+
+	// Then
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(logs) != 1 || logs[0].ID != ids[0] {
+		t.Fatalf("filtered request IDs = %v, want [%d]", requestIDs(logs), ids[0])
+	}
+}
+
+func TestRequests_filter_error_state_before_pagination(t *testing.T) {
+	// Given
+	st := newTestStore(t)
+	status200, status503 := 200, 503
+	fixtures := []*store.RequestLog{
+		{TraceID: "success-old", AttemptNo: 1, Provider: "alpha", Model: "m1", StatusCode: &status200},
+		{TraceID: "failed", AttemptNo: 1, Provider: "alpha", Model: "m1", StatusCode: &status503, ErrorMsg: "down", ErrorFingerprint: "fp-down"},
+		{TraceID: "success-new", AttemptNo: 1, Provider: "alpha", Model: "m1", StatusCode: &status200},
+	}
+	ids := make([]int64, 0, len(fixtures))
+	for _, fixture := range fixtures {
+		id, err := st.InsertRequest(fixture)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	isError := false
+
+	// When
+	logs, err := st.ListRequests(store.RequestFilters{Error: &isError}, 1, 1)
+
+	// Then
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(logs) != 1 || logs[0].ID != ids[0] {
+		t.Fatalf("filtered request IDs = %v, want [%d]", requestIDs(logs), ids[0])
 	}
 }
 

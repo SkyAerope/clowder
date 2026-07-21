@@ -19,6 +19,7 @@ import (
 
 type apiBehaviorFixture struct {
 	handler http.Handler
+	app     *app.App
 	key     *store.Key
 	home    string
 }
@@ -75,7 +76,7 @@ routing:
 	if err := a.Pool.AddKey(key); err != nil {
 		t.Fatal(err)
 	}
-	return &apiBehaviorFixture{handler: New(a).Handler(), key: key, home: home}
+	return &apiBehaviorFixture{handler: New(a).Handler(), app: a, key: key, home: home}
 }
 
 func (f *apiBehaviorFixture) request(t *testing.T, spec apiRequest) *httptest.ResponseRecorder {

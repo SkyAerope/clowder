@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/SkyAerope/clowder/internal/store"
 )
 
 func TestRetryNextKeyOn401(t *testing.T) {
@@ -43,7 +45,7 @@ rules:
 		t.Fatalf("upstream calls = %d, want 2 (bad then good)", n)
 	}
 	// 验证重试链已落库
-	logs, err := a.Store.ListRequests(10, 0)
+	logs, err := a.Store.ListRequests(store.RequestFilters{}, 10, 0)
 	if err != nil || len(logs) != 2 {
 		t.Fatalf("want 2 request logs, got %d (%v)", len(logs), err)
 	}
@@ -108,7 +110,7 @@ rules:
 	}
 	// 竞速赢家会取消尚未完成的另一分支，因此日志可能是初始 attempt + 赢家
 	// 两条，也可能在取消前完成两路而有三条；不把取消时序作为业务契约。
-	logs, err := a.Store.ListRequests(10, 0)
+	logs, err := a.Store.ListRequests(store.RequestFilters{}, 10, 0)
 	if err != nil || len(logs) < 2 {
 		t.Fatalf("want at least initial and winning attempts, got %d (%v)", len(logs), err)
 	}

@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
 // Capture 对应 captures 表一行。
@@ -86,6 +87,41 @@ func (s *Store) ListCaptures(rule, fingerprint string, limit int) ([]*Capture, e
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+// CapturesByRequest 批量返回每个请求最新的一条抓包；无抓包的请求不在结果中。
+func (s *Store) CapturesByRequest(requestIDs []int64) (map[int64]*Capture, error) {
+	result := make(map[int64]*Capture, len(requestIDs))
+	if len(requestIDs) == 0 {
+		return result, nil
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(requestIDs)), ",")
+	query := `SELECT id, request_id, matched_slug, COALESCE(fingerprint,''), provider, COALESCE(model,''),
+		COALESCE(request_headers,''), COALESCE(request_body,''),
+		COALESCE(response_headers,''), COALESCE(response_body,''), redacted, COALESCE(created_at,'')
+		FROM captures
+		WHERE id IN (SELECT MAX(id) FROM captures GROUP BY request_id)
+			AND request_id IN (` + placeholders + `)`
+	args := make([]any, len(requestIDs))
+	for i, id := range requestIDs {
+		args[i] = id
+	}
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		c := &Capture{}
+		var redacted int
+		if err := rows.Scan(&c.ID, &c.RequestID, &c.MatchedSlug, &c.Fingerprint, &c.Provider, &c.Model,
+			&c.RequestHeaders, &c.RequestBody, &c.ResponseHeaders, &c.ResponseBody, &redacted, &c.CreatedAt); err != nil {
+			return nil, err
+		}
+		c.Redacted = redacted != 0
+		result[c.RequestID] = c
+	}
+	return result, rows.Err()
 }
 
 // AvgTTFT 查询某 (provider, model) 最近 n 条成功请求的平均 TTFT；无数据返回 false。

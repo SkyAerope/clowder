@@ -145,6 +145,11 @@ export interface Capture {
   created_at: string
 }
 
+export interface RequestLogEntry extends RequestLog {
+  trace: RequestLog[]
+  capture: Capture | null
+}
+
 export interface HealthSnapshot {
   provider: string
   model: string

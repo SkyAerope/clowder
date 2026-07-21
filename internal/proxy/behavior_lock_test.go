@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+
+	"github.com/SkyAerope/clowder/internal/store"
 )
 
 func TestChatRejectsInvalidJSON(t *testing.T) {
@@ -114,7 +116,7 @@ rules:
 	chatReq(t, handler, `{"model":"test-model","messages":[]}`)
 
 	// Then
-	logs, err := app.Store.ListRequests(10, 0)
+	logs, err := app.Store.ListRequests(store.RequestFilters{}, 10, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

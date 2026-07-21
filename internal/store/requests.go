@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"time"
 )
 
 // RequestLog 对应 requests 表一行（一次上游 attempt）。
@@ -22,6 +23,18 @@ type RequestLog struct {
 	CreatedAt        string `json:"created_at"`
 }
 
+// RequestFilters 描述请求日志列表的可选筛选条件。
+type RequestFilters struct {
+	From        *time.Time
+	To          *time.Time
+	Provider    string
+	Model       string
+	StatusCode  *int
+	Error       *bool
+	MatchedSlug string
+	Fingerprint string
+}
+
 // InsertRequest 写入一条 attempt 日志。
 func (s *Store) InsertRequest(r *RequestLog) (int64, error) {
 	res, err := s.db.Exec(`INSERT INTO requests
@@ -36,12 +49,51 @@ func (s *Store) InsertRequest(r *RequestLog) (int64, error) {
 	return res.LastInsertId()
 }
 
-// ListRequests 分页查询（按 id 倒序）。
-func (s *Store) ListRequests(limit, offset int) ([]*RequestLog, error) {
-	rows, err := s.db.Query(`SELECT id, trace_id, attempt_no, key_id, provider, model,
+// ListRequests 按条件分页查询（按 id 倒序）。
+func (s *Store) ListRequests(filters RequestFilters, limit, offset int) ([]*RequestLog, error) {
+	query := `SELECT id, trace_id, attempt_no, key_id, provider, model,
 		status_code, ttft_ms, latency_ms, COALESCE(matched_slug,''), COALESCE(error_msg,''),
 		COALESCE(error_fingerprint,''), COALESCE(created_at,'')
-		FROM requests ORDER BY id DESC LIMIT ? OFFSET ?`, limit, offset)
+		FROM requests WHERE 1=1`
+	args := make([]any, 0, 10)
+	if filters.From != nil {
+		query += ` AND created_at >= ?`
+		args = append(args, filters.From.UTC().Format(time.DateTime))
+	}
+	if filters.To != nil {
+		query += ` AND created_at <= ?`
+		args = append(args, filters.To.UTC().Format(time.DateTime))
+	}
+	if filters.Provider != "" {
+		query += ` AND provider = ?`
+		args = append(args, filters.Provider)
+	}
+	if filters.Model != "" {
+		query += ` AND model = ?`
+		args = append(args, filters.Model)
+	}
+	if filters.StatusCode != nil {
+		query += ` AND status_code = ?`
+		args = append(args, *filters.StatusCode)
+	}
+	if filters.Error != nil {
+		if *filters.Error {
+			query += ` AND NULLIF(error_fingerprint, '') IS NOT NULL`
+		} else {
+			query += ` AND NULLIF(error_fingerprint, '') IS NULL`
+		}
+	}
+	if filters.MatchedSlug != "" {
+		query += ` AND matched_slug = ?`
+		args = append(args, filters.MatchedSlug)
+	}
+	if filters.Fingerprint != "" {
+		query += ` AND instr(error_fingerprint, ?) > 0`
+		args = append(args, filters.Fingerprint)
+	}
+	query += ` ORDER BY id DESC LIMIT ? OFFSET ?`
+	args = append(args, limit, offset)
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}

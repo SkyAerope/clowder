@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/SkyAerope/clowder/internal/store"
 )
 
 // TestClientDisconnectDuringRead 客户端在非流式读取阶段断开（ctx canceled）：
@@ -46,7 +48,7 @@ func TestClientDisconnectDuringRead(t *testing.T) {
 	cancel() // 模拟客户端断开
 	<-done
 
-	logs, err := a.Store.ListRequests(10, 0)
+	logs, err := a.Store.ListRequests(store.RequestFilters{}, 10, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
