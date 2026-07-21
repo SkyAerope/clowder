@@ -1,22 +1,40 @@
 package server
 
 import (
-	"encoding/json"
+	"net/http"
 	"testing"
 )
 
-func TestProviderDetailModelsEncodeEmptySliceAsArray(t *testing.T) {
+func TestProviderDetailReturnsEmptyModelsAsJSONArray(t *testing.T) {
 	// Given
-	models := append([]string{}, []string(nil)...)
+	fixture := newAPIBehaviorFixture(t, true)
+	cookie := fixture.login(t)
+	updated := fixture.request(t, apiRequest{
+		method: http.MethodPut,
+		path:   "/api/admin/providers/fixture/manifest",
+		body:   `{"yaml":"name: fixture\ndisplay_name: Fixture Provider\nbase_url: http://127.0.0.1\nenabled: true\nmodels: []\n"}`,
+		cookie: cookie,
+	})
+	if updated.Code != http.StatusOK {
+		t.Fatalf("manifest update status = %d, want %d: %s", updated.Code, http.StatusOK, updated.Body.String())
+	}
 
 	// When
-	encoded, err := json.Marshal(map[string]any{"models": models})
+	recorder := fixture.request(t, apiRequest{
+		method: http.MethodGet,
+		path:   "/api/admin/providers/fixture",
+		cookie: cookie,
+	})
 
 	// Then
-	if err != nil {
-		t.Fatal(err)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
 	}
-	if got, want := string(encoded), `{"models":[]}`; got != want {
-		t.Fatalf("encoded provider models = %s, want %s", got, want)
+	var body struct {
+		Models []string `json:"models"`
+	}
+	decodeJSON(t, recorder, &body)
+	if body.Models == nil || len(body.Models) != 0 {
+		t.Fatalf("provider models = %#v, want non-nil empty array", body.Models)
 	}
 }
