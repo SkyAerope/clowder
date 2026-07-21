@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"io"
 	"os"
 	"path/filepath"
@@ -34,11 +35,22 @@ routing: { upstream_streaming: true }
 	})
 
 	// Then
-	if !strings.Contains(output, "inherited") || !strings.Contains(output, "enabled=true") || !strings.Contains(output, "streaming=true") {
-		t.Fatalf("enabled provider missing effective streaming state:\n%s", output)
+	lines := map[string][]string{}
+	scanner := bufio.NewScanner(strings.NewReader(output))
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) >= 4 && (fields[0] == "inherited" || fields[0] == "disabled") {
+			lines[fields[0]] = fields[1:]
+		}
 	}
-	if !strings.Contains(output, "disabled") || !strings.Contains(output, "enabled=false") || !strings.Contains(output, "streaming=false") {
-		t.Fatalf("disabled provider missing effective streaming state:\n%s", output)
+	if err := scanner.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(lines["inherited"], " "); got != "enabled=true streaming=true keys=0/0 models=0" {
+		t.Fatalf("inherited provider fields = %q", got)
+	}
+	if got := strings.Join(lines["disabled"], " "); got != "enabled=false streaming=false keys=0/0 models=0" {
+		t.Fatalf("disabled provider fields = %q", got)
 	}
 }
 
