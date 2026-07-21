@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildRequestParams, defaultRequestFilters, emptyRequestFilters, statusFilterError } from '../src/pages/request-filters.ts'
+import {
+  buildRequestParams,
+  defaultRequestFilters,
+  emptyRequestFilters,
+  parseRequestFiltersFromQuery,
+  statusFilterError,
+} from '../src/pages/request-filters.ts'
 
 process.env.TZ = 'UTC'
 
@@ -128,4 +134,39 @@ test('rolls the default start date back across a month boundary', () => {
   // Then
   assert.equal(defaults.from, '2026-06-30T00:00')
   assert.equal(defaults.to, '2026-07-01T23:59')
+})
+
+test('initializes request filters from URL and preserves explicit empty dates', () => {
+  // Given
+  const now = new Date('2026-07-21T15:30:00')
+
+  // When
+  const filters = parseRequestFiltersFromQuery({
+    fingerprint: 'fp-rate',
+    provider: ['alpha', 'ignored'],
+    from: '',
+    to: '',
+    error: 'true',
+  }, now)
+
+  // Then
+  assert.equal(filters.fingerprint, 'fp-rate')
+  assert.equal(filters.provider, 'alpha')
+  assert.equal(filters.from, '')
+  assert.equal(filters.to, '')
+  assert.equal(filters.error, 'true')
+})
+
+test('keeps default dates when URL omits them and normalizes invalid booleans', () => {
+  // Given
+  const now = new Date('2026-07-21T15:30:00')
+
+  // When
+  const filters = parseRequestFiltersFromQuery({ error: 'invalid', captured: ['false'] }, now)
+
+  // Then
+  assert.equal(filters.from, '2026-07-20T00:00')
+  assert.equal(filters.to, '2026-07-21T23:59')
+  assert.equal(filters.error, '')
+  assert.equal(filters.captured, 'false')
 })

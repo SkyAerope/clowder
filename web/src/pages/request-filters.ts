@@ -39,6 +39,59 @@ function localDatetime(date: Date, time: string): string {
   return `${year}-${month}-${day}T${time}`
 }
 
+function normalizeQueryValue(value: unknown): string {
+  if (Array.isArray(value)) return value.length > 0 ? String(value[0]) : ''
+  if (typeof value === 'string') return value
+  return ''
+}
+
+function fromUTCISO(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  const d = new Date(trimmed)
+  if (Number.isNaN(d.getTime())) return ''
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  const hours = String(d.getHours()).padStart(2, '0')
+  const minutes = String(d.getMinutes()).padStart(2, '0')
+  return `${year}-${month}-${day}T${hours}:${minutes}`
+}
+
+export function parseRequestFiltersFromQuery(
+  query: Record<string, unknown>,
+  now: Date = new Date(),
+): RequestFilterDraft {
+  const defaults = defaultRequestFilters(now)
+  const result: RequestFilterDraft = { ...emptyRequestFilters }
+
+  if ('from' in query) {
+    const raw = normalizeQueryValue(query.from)
+    result.from = raw ? fromUTCISO(raw) : ''
+  } else {
+    result.from = defaults.from
+  }
+
+  if ('to' in query) {
+    const raw = normalizeQueryValue(query.to)
+    result.to = raw ? fromUTCISO(raw) : ''
+  } else {
+    result.to = defaults.to
+  }
+
+  result.provider = normalizeQueryValue(query.provider)
+  result.model = normalizeQueryValue(query.model)
+  result.status = normalizeQueryValue(query.status)
+  const error = normalizeQueryValue(query.error)
+  result.error = error === 'true' || error === 'false' ? error : ''
+  result.rule = normalizeQueryValue(query.rule)
+  result.fingerprint = normalizeQueryValue(query.fingerprint)
+  const captured = normalizeQueryValue(query.captured)
+  result.captured = captured === 'true' || captured === 'false' ? captured : ''
+
+  return result
+}
+
 export function buildRequestParams(filters: RequestFilterDraft, limit: number, offset: number): string {
   const params = new URLSearchParams()
   params.set('limit', String(limit))
