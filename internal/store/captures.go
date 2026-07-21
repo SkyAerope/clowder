@@ -53,42 +53,6 @@ func (s *Store) evictCaptures(maxRecords int) {
 	)`, maxRecords)
 }
 
-// ListCaptures 按规则或指纹过滤查询。
-func (s *Store) ListCaptures(rule, fingerprint string, limit int) ([]*Capture, error) {
-		q := `SELECT id, request_id, matched_slug, COALESCE(fingerprint,''), provider, COALESCE(model,''),
-		COALESCE(request_headers,''), COALESCE(request_body,''),
-		COALESCE(response_headers,''), COALESCE(response_body,''), redacted, COALESCE(created_at,'')
-		FROM captures WHERE 1=1`
-	var args []any
-	if rule != "" {
-		q += ` AND matched_slug=?`
-		args = append(args, rule)
-	}
-	if fingerprint != "" {
-		q += ` AND fingerprint=?`
-		args = append(args, fingerprint)
-	}
-	q += ` ORDER BY id DESC LIMIT ?`
-	args = append(args, limit)
-	rows, err := s.db.Query(q, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []*Capture
-	for rows.Next() {
-		c := &Capture{}
-		var redacted int
-			if err := rows.Scan(&c.ID, &c.RequestID, &c.MatchedSlug, &c.Fingerprint, &c.Provider, &c.Model,
-			&c.RequestHeaders, &c.RequestBody, &c.ResponseHeaders, &c.ResponseBody, &redacted, &c.CreatedAt); err != nil {
-			return nil, err
-		}
-		c.Redacted = redacted != 0
-		out = append(out, c)
-	}
-	return out, rows.Err()
-}
-
 // CapturesByRequest 批量返回每个请求最新的一条抓包；无抓包的请求不在结果中。
 func (s *Store) CapturesByRequest(requestIDs []int64) (map[int64]*Capture, error) {
 	result := make(map[int64]*Capture, len(requestIDs))

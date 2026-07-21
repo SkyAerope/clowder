@@ -39,14 +39,6 @@ func registerActivityAPI(mux *http.ServeMux, admin func(http.HandlerFunc) http.H
 		}
 		jsonOK(w, groups)
 	}))
-	mux.HandleFunc("GET /api/admin/captures", admin(func(w http.ResponseWriter, r *http.Request) {
-		caps, err := a.Store.ListCaptures(r.URL.Query().Get("rule"), r.URL.Query().Get("fingerprint"), queryInt(r, "limit", 20))
-		if err != nil {
-			jsonErr(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		jsonOK(w, caps)
-	}))
 }
 
 // requestLogView 是请求日志列表的一行：随列表内联返回完整重试链与抓包，前端展开无需二次请求。

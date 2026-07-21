@@ -37,7 +37,7 @@ rules:
 	// When
 	w := chatReq(t, h, `{"model":"test-model","stream":true,"messages":[]}`)
 	a.Close()
-	captures := listStreamCaptures(t, home, "capture-stream-cut")
+	captures := capturesForRequests(t, home)
 
 	// Then
 	if w.Code != http.StatusOK {
@@ -66,7 +66,7 @@ rules:
 	// When
 	w := chatReq(t, h, `{"model":"test-model","stream":true,"messages":[]}`)
 	a.Close()
-	captures := listStreamCaptures(t, home, "capture-stream-success")
+	captures := capturesForRequests(t, home)
 
 	// Then
 	if w.Code != http.StatusOK {
@@ -77,16 +77,30 @@ rules:
 	}
 }
 
-func listStreamCaptures(t *testing.T, home, rule string) []*store.Capture {
+func capturesForRequests(t *testing.T, home string) []*store.Capture {
 	t.Helper()
 	reopened, err := store.Open(home)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = reopened.Close() })
-	captures, err := reopened.ListCaptures(rule, "", 10)
+	logs, err := reopened.ListRequests(store.RequestFilters{}, 10, 0)
 	if err != nil {
 		t.Fatal(err)
+	}
+	requestIDs := make([]int64, len(logs))
+	for i, log := range logs {
+		requestIDs[i] = log.ID
+	}
+	byRequest, err := reopened.CapturesByRequest(requestIDs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	captures := make([]*store.Capture, 0, len(byRequest))
+	for _, log := range logs {
+		if capture := byRequest[log.ID]; capture != nil {
+			captures = append(captures, capture)
+		}
 	}
 	return captures
 }
