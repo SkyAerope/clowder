@@ -18,7 +18,7 @@ function details(): string[] {
   if (props.provider.status === 'healthy' || props.provider.status === 'disabled' || isNeverRequested()) return []
   return [
     props.provider.status_reason ?? '',
-    props.provider.last_rule ? `触发规则：${props.provider.last_rule}` : '',
+  props.provider.last_slug ? `触发规则：${props.provider.last_slug}` : '',
     props.provider.last_error_at ? `失败时间：${formatTime(props.provider.last_error_at)}` : '',
   ].filter(Boolean)
 }

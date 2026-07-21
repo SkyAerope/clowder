@@ -21,7 +21,7 @@ type ModelHealthRow = {
   readonly errorCount: number
   readonly lastErrorAt?: string
   readonly lastSuccessAt?: string
-  readonly lastRule?: string
+  readonly lastSlug?: string
 }
 
 const props = defineProps<{
@@ -58,7 +58,7 @@ const rows = computed<ModelHealthRow[]>(() => {
       errorCount: snapshot?.error_count ?? 0,
       lastErrorAt: snapshot?.last_error_at,
       lastSuccessAt: snapshot?.last_success_at,
-      lastRule: snapshot?.last_rule,
+      lastSlug: snapshot?.last_slug,
     }
   })
 })
@@ -91,7 +91,7 @@ function isNeverRequested(row: ModelHealthRow): boolean {
 function healthDetails(row: ModelHealthRow): string[] {
   if (row.status === 'healthy' || isNeverRequested(row)) return []
   return [
-    row.lastRule ? `触发规则：${row.lastRule}` : '',
+    row.lastSlug ? `触发规则：${row.lastSlug}` : '',
     row.lastErrorAt ? `失败时间：${formatTime(row.lastErrorAt)}` : '',
   ].filter(Boolean)
 }
@@ -149,8 +149,8 @@ function healthDetails(row: ModelHealthRow): string[] {
                         <p v-if="checkStates[row.model]?.modelResponse">模型回复：{{ checkStates[row.model]?.modelResponse }}</p>
                         <p v-if="checkStates[row.model]?.ttftMS">TTFT：{{ checkStates[row.model]?.ttftMS }} ms</p>
                         <p v-if="checkStates[row.model]?.errorMessage">{{ checkStates[row.model]?.errorMessage }}</p>
-                        <p v-if="checkStates[row.model]?.ruleName" class="break-words">
-                          命中规则：{{ checkStates[row.model]?.ruleName }}
+                        <p v-if="checkStates[row.model]?.ruleSlug" class="break-words">
+                          命中规则：{{ checkStates[row.model]?.ruleSlug }}
                           <button
                             type="button"
                             class="cursor-pointer whitespace-nowrap font-medium underline underline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"

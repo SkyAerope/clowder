@@ -7,7 +7,7 @@ export type ModelCheckState = {
   readonly keyID: number
   readonly modelResponse: string
   readonly ttftMS: number
-  readonly ruleName: string
+  readonly ruleSlug: string
   readonly statusCode: number
   readonly responseBody: string
   readonly applying: boolean
@@ -20,7 +20,7 @@ type ModelCheckResponse = {
   readonly key_id: number
   readonly model_response: string
   readonly ttft_ms: number
-  readonly rule_name: string
+  readonly rule_slug: string
   readonly status_code: number
   readonly response_body: string
 }
@@ -42,7 +42,7 @@ type ModelHealthOperations = {
 function emptyCheckState(): ModelCheckState {
   return {
     loading: false, result: null, status: '', keyID: 0, modelResponse: '', ttftMS: 0,
-    ruleName: '', statusCode: 0, responseBody: '', applying: false, applied: false, errorMessage: '',
+    ruleSlug: '', statusCode: 0, responseBody: '', applying: false, applied: false, errorMessage: '',
   }
 }
 
@@ -69,7 +69,7 @@ export function createModelHealthOperations(
         keyID: response.key_id,
         modelResponse: response.model_response,
         ttftMS: response.ttft_ms,
-        ruleName: response.rule_name,
+        ruleSlug: response.rule_slug,
         statusCode: response.status_code,
         responseBody: response.response_body,
       }
@@ -81,15 +81,15 @@ export function createModelHealthOperations(
 
   async function applyRule(model: string): Promise<void> {
     const state = checkStates.value[model]
-    if (!state?.ruleName || state.applying || state.applied) return
+    if (!state?.ruleSlug || state.applying || state.applied) return
     checkStates.value[model] = { ...state, applying: true }
     try {
       await dependencies.post(`/api/admin/providers/${dependencies.provider}/apply-model-check-rule`, {
-        model, key_id: state.keyID, rule_name: state.ruleName,
+        model, key_id: state.keyID, rule_slug: state.ruleSlug,
         status_code: state.statusCode, response_body: state.responseBody,
       })
       checkStates.value[model] = { ...state, applying: false, applied: true }
-      dependencies.success(`已应用规则 ${state.ruleName}`)
+      dependencies.success(`已应用规则 ${state.ruleSlug}`)
       dependencies.checked()
     } catch (error) {
       checkStates.value[model] = { ...state, applying: false }

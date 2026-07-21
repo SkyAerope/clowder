@@ -8,7 +8,7 @@ function checkResponse(overrides = {}) {
     key_id: 7,
     model_response: 'ready',
     ttft_ms: 42,
-    rule_name: '',
+    rule_slug: '',
     status_code: 200,
     response_body: '{"ok":true}',
     ...overrides,
@@ -45,7 +45,7 @@ test('posts a model check with a JSON-encoded model value', async () => {
 
 test('maps an active model check response to success', async () => {
   // Given
-  const operations = operationsFor(async () => checkResponse({ rule_name: 'returned-rule' }))
+  const operations = operationsFor(async () => checkResponse({ rule_slug: 'returned-rule' }))
 
   // When
   await operations.checkModel('model-a')
@@ -58,7 +58,7 @@ test('maps an active model check response to success', async () => {
     keyID: 7,
     modelResponse: 'ready',
     ttftMS: 42,
-    ruleName: 'returned-rule',
+    ruleSlug: 'returned-rule',
     statusCode: 200,
     responseBody: '{"ok":true}',
     applying: false,
@@ -91,7 +91,7 @@ test('maps a model check request failure to an error result', async () => {
   assert.equal(operations.checkStates.value['model-c']?.errorMessage, 'network unavailable')
 })
 
-test('does not apply a rule unless the model check returned rule_name', async () => {
+test('does not apply a rule unless the model check returned rule_slug', async () => {
   // Given
   const requests = []
   const operations = operationsFor(async (url, body) => {
@@ -117,7 +117,7 @@ test('applies the returned rule and completes before toast and checked callbacks
     post: async (url, body) => {
       events.push({ url, body })
       return url.endsWith('/check-model')
-        ? checkResponse({ rule_name: 'returned-rule', status_code: 429, response_body: 'limited' })
+        ? checkResponse({ rule_slug: 'returned-rule', status_code: 429, response_body: 'limited' })
         : undefined
     },
     checked: () => { events.push(`checked:${operations.checkStates.value['model-e']?.applied}`) },
@@ -137,7 +137,7 @@ test('applies the returned rule and completes before toast and checked callbacks
       body: {
         model: 'model-e',
         key_id: 7,
-        rule_name: 'returned-rule',
+        rule_slug: 'returned-rule',
         status_code: 429,
         response_body: 'limited',
       },
