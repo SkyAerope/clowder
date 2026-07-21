@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { session, refreshSession, ensureSession, api } from './api'
 import {
   LayoutDashboard, Boxes, ScrollText, AlertTriangle,
-  Camera, SlidersHorizontal, Settings, LogOut, LogIn, Cat, Menu,
+  SlidersHorizontal, Settings, LogOut, LogIn, Cat, Menu,
 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -28,7 +28,6 @@ const navItems = [
   { to: '/providers', label: '提供商管理', icon: Boxes, admin: true },
   { to: '/requests', label: '请求日志', icon: ScrollText, admin: true },
   { to: '/errors', label: '错误聚合', icon: AlertTriangle, admin: true },
-  { to: '/captures', label: '抓取记录', icon: Camera, admin: true },
   { to: '/rules', label: '规则', icon: SlidersHorizontal, admin: true },
   { to: '/settings', label: '设置', icon: Settings, admin: true },
 ]

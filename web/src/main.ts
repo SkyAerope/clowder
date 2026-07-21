@@ -11,7 +11,6 @@ import Providers from './pages/Providers.vue'
 import ProviderDetail from './pages/ProviderDetail.vue'
 import Requests from './pages/Requests.vue'
 import Errors from './pages/Errors.vue'
-import Captures from './pages/Captures.vue'
 import Rules from './pages/Rules.vue'
 import Settings from './pages/Settings.vue'
 
@@ -25,7 +24,6 @@ const router = createRouter({
     { path: '/providers/:name', component: ProviderDetail, meta: { admin: true } },
     { path: '/requests', component: Requests, meta: { admin: true } },
     { path: '/errors', component: Errors, meta: { admin: true } },
-    { path: '/captures', component: Captures, meta: { admin: true } },
     { path: '/rules', component: Rules, meta: { admin: true } },
     { path: '/settings', component: Settings, meta: { admin: true } },
   ],
