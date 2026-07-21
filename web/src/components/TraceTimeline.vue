@@ -34,7 +34,7 @@ function statusClass(code?: number) {
           <span class="text-primary ml-2">耗时</span> {{ t.latency_ms != null ? t.latency_ms + 'ms' : '—' }}
           <template v-if="t.matched_slug"><span class="text-primary ml-2">命中规则</span> {{ t.matched_slug }}</template>
         </div>
-        <div v-if="t.error_msg" class="text-xs text-destructive break-all">{{ t.error_msg }}</div>
+        <div v-if="t.error_msg" class="text-destructive whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-xs">{{ t.error_msg }}</div>
       </div>
     </div>
   </div>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { api, ApiError, type Capture, type RequestLogEntry } from '../api'
 import TableSkeleton from '../components/TableSkeleton.vue'
 import TraceTimeline from '../components/TraceTimeline.vue'
@@ -13,21 +14,25 @@ import {
 } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { toast } from 'vue-sonner'
-import { buildRequestParams, defaultRequestFilters, statusFilterError, type RequestFilterDraft } from './request-filters'
+import {
+  buildRequestParams, parseRequestFiltersFromQuery, statusFilterError, type RequestFilterDraft,
+} from './request-filters'
 import { RefreshCw, ChevronLeft, ChevronRight, GitBranch, Fingerprint, TriangleAlert, ListFilter, X, FileJson, ShieldCheck } from 'lucide-vue-next'
+
+const route = useRoute()
 
 const logs = ref<RequestLogEntry[]>([])
 const loaded = ref(false)
 const filtering = ref(false)
 const offset = ref(0)
 const limit = 50
-const initial = defaultRequestFilters()
+
+const initial = parseRequestFiltersFromQuery(route.query)
 const draft = ref<RequestFilterDraft>({ ...initial })
 const applied = ref<RequestFilterDraft>({ ...initial })
-const expandedId = ref<number | null>(null)
+const expandedIds = ref<Set<number>>(new Set())
 
 async function load() {
-  expandedId.value = null
   filtering.value = true
   try {
     const query = buildRequestParams(applied.value, limit, offset.value)
@@ -41,6 +46,10 @@ async function load() {
   } finally {
     loaded.value = true
     filtering.value = false
+    const ids = new Set(logs.value.map((l) => l.id))
+    for (const id of expandedIds.value) {
+      if (!ids.has(id)) expandedIds.value.delete(id)
+    }
   }
 }
 
@@ -56,11 +65,12 @@ function applyFilters() {
 }
 
 function resetFilters() {
-  draft.value = defaultRequestFilters()
+  draft.value = parseRequestFiltersFromQuery({})
 }
 
 function toggleExpand(id: number) {
-  expandedId.value = expandedId.value === id ? null : id
+  if (expandedIds.value.has(id)) expandedIds.value.delete(id)
+  else expandedIds.value.add(id)
 }
 
 const captureFieldLabels: Record<string, string> = {
@@ -178,11 +188,11 @@ onMounted(load)
               <TableCell class="w-10">
                 <button
                   class="flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  :aria-expanded="expandedId === l.id"
+                  :aria-expanded="expandedIds.has(l.id)"
                   aria-label="展开详情"
                   @click="toggleExpand(l.id)"
                 >
-                  <ChevronRight class="size-4 transition-transform duration-200" :class="expandedId === l.id && 'rotate-90'" />
+                  <ChevronRight class="size-4 transition-transform duration-200" :class="expandedIds.has(l.id) && 'rotate-90'" />
                 </button>
               </TableCell>
               <TableCell class="text-xs whitespace-nowrap">{{ new Date(l.created_at + 'Z').toLocaleString() }}</TableCell>
@@ -228,20 +238,20 @@ onMounted(load)
                 </Tooltip>
               </TableCell>
             </TableRow>
-            <TableRow v-if="expandedId === l.id" class="hover:bg-transparent">
+            <TableRow v-if="expandedIds.has(l.id)" class="hover:bg-transparent">
               <TableCell :colspan="11" class="p-0">
-                <div class="grid grid-cols-1 gap-4 border-t border-border bg-muted/30 px-4 py-3 lg:grid-cols-2">
+                <div class="grid grid-cols-1 gap-4 border-t border-border bg-muted/30 px-4 py-3" :class="hasCapture(l) && 'lg:grid-cols-2'">
                   <div class="min-w-0">
                     <div class="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                       <GitBranch class="size-3.5" />重试链<span class="font-mono">{{ l.trace_id }}</span>
                     </div>
                     <TraceTimeline :trace="l.trace" />
                   </div>
-                  <div class="min-w-0">
+                  <div v-if="l.capture && hasCapture(l)" class="min-w-0">
                     <div class="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                       <FileJson class="size-3.5" /> 抓包
                     </div>
-                    <div v-if="l.capture" class="flex flex-col gap-3">
+                    <div class="flex flex-col gap-3">
                       <div v-if="l.capture.redacted" class="flex items-center gap-1 text-xs text-muted-foreground">
                         <ShieldCheck class="size-3.5 text-success" /> 已脱敏
                       </div>
@@ -250,7 +260,6 @@ onMounted(load)
                         <pre class="bg-background max-h-48 overflow-x-auto rounded-md border border-border p-2.5 font-mono text-[11px] leading-relaxed">{{ part.value }}</pre>
                       </div>
                     </div>
-                    <div v-else class="text-xs text-muted-foreground">该请求没有抓包记录</div>
                   </div>
                 </div>
               </TableCell>
