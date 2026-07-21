@@ -62,7 +62,7 @@ func New(cfg *config.Config) (*App, error) {
 			AvgTTFTMs: snapshot.AvgTTFTMs, ErrorCount: snapshot.ErrorCount,
 			BackoffCount: snapshot.BackoffCount, UnhealthyUntil: snapshot.UnhealthyUntil,
 			LastErrorAt: snapshot.LastErrorAt, LastSuccessAt: snapshot.LastSuccessAt,
-			LastRule: snapshot.LastRule,
+			LastSlug: snapshot.LastSlug,
 		}
 	}
 	a := &App{
@@ -78,7 +78,7 @@ func New(cfg *config.Config) (*App, error) {
 			AvgTTFTMs: state.AvgTTFTMs, ErrorCount: state.ErrorCount,
 			BackoffCount: state.BackoffCount, UnhealthyUntil: state.UnhealthyUntil,
 			LastErrorAt: state.LastErrorAt, LastSuccessAt: state.LastSuccessAt,
-			LastRule: state.LastRule,
+			LastSlug: state.LastSlug,
 		})
 		if err != nil {
 			a.Log.Warn("save provider health", "provider", state.Provider, "model", state.Model, "error", err)

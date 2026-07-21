@@ -76,7 +76,7 @@ func (a *App) Reload() error {
 	builtins := rules.BuiltinRules()
 	if disabled := rules.ParseDisabledBuiltins(rulesRaw); disabled != nil {
 		for _, b := range builtins {
-			if disabled[b.Name] {
+			if disabled[b.Slug] {
 				b.Enabled = false
 			}
 		}
