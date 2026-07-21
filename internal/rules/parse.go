@@ -11,8 +11,8 @@ import (
 
 // rawRule 是 rules.yaml / manifest rules 的原始结构。
 type rawRule struct {
+	Slug        string
 	Name        string           `yaml:"name"`
-	Description string           `yaml:"description"`
 	Priority    *int             `yaml:"priority"`
 	Enabled     *bool            `yaml:"enabled"`
 	When        map[string]any   `yaml:"when"`
@@ -24,19 +24,31 @@ type rawRule struct {
 // ParseRules 从 YAML 字节解析规则列表（rules.yaml 顶层为 {rules: [...]}）。
 func ParseRules(data []byte, source int) ([]*Rule, error) {
 	var doc struct {
-		Rules []rawRule `yaml:"rules"`
+		Rules []map[string]rawRule `yaml:"rules"`
 	}
 	if err := yaml.Unmarshal(data, &doc); err != nil {
 		return nil, fmt.Errorf("parse rules: %w", err)
 	}
-	return buildRules(doc.Rules, source, "")
+	raws, err := keyedRules(doc.Rules)
+	if err != nil {
+		return nil, fmt.Errorf("parse rules: %w", err)
+	}
+	return buildRules(raws, source, "")
 }
 
 // ParseManifestRules 解析 manifest 内嵌规则（自动附加 provider 作用域）。
 func ParseManifestRules(raw []map[string]any, providerName string) ([]*Rule, error) {
 	rrs := make([]rawRule, 0, len(raw))
 	for _, m := range raw {
-		b, err := yaml.Marshal(m)
+		if len(m) != 1 {
+			return nil, fmt.Errorf("rule must be a mapping with one slug key")
+		}
+		var slug string
+		var value any
+		for key, entry := range m {
+			slug, value = key, entry
+		}
+		b, err := yaml.Marshal(value)
 		if err != nil {
 			return nil, err
 		}
@@ -44,9 +56,24 @@ func ParseManifestRules(raw []map[string]any, providerName string) ([]*Rule, err
 		if err := yaml.Unmarshal(b, &rr); err != nil {
 			return nil, err
 		}
+		rr.Slug = slug
 		rrs = append(rrs, rr)
 	}
 	return buildRules(rrs, SourceManifest, providerName)
+}
+
+func keyedRules(entries []map[string]rawRule) ([]rawRule, error) {
+	raws := make([]rawRule, 0, len(entries))
+	for _, entry := range entries {
+		if len(entry) != 1 {
+			return nil, fmt.Errorf("rule must be a mapping with one slug key")
+		}
+		for slug, rr := range entry {
+			rr.Slug = slug
+			raws = append(raws, rr)
+		}
+	}
+	return raws, nil
 }
 
 func buildRules(raws []rawRule, source int, forceProvider string) ([]*Rule, error) {
@@ -54,11 +81,11 @@ func buildRules(raws []rawRule, source int, forceProvider string) ([]*Rule, erro
 	for i, rr := range raws {
 		r, err := buildRule(rr, source)
 		if err != nil {
-			name := rr.Name
-			if name == "" {
-				name = fmt.Sprintf("#%d", i)
+			slug := rr.Slug
+			if slug == "" {
+				slug = fmt.Sprintf("#%d", i)
 			}
-			return nil, fmt.Errorf("rule %s: %w", name, err)
+			return nil, fmt.Errorf("rule %s: %w", slug, err)
 		}
 		if forceProvider != "" && r.When.Type() == "upstream" {
 			r.When.Provider = forceProvider // manifest 规则强制限定本 provider
@@ -69,12 +96,12 @@ func buildRules(raws []rawRule, source int, forceProvider string) ([]*Rule, erro
 }
 
 func buildRule(rr rawRule, source int) (*Rule, error) {
-	if rr.Name == "" {
-		return nil, fmt.Errorf("missing name")
+	if rr.Slug == "" {
+		return nil, fmt.Errorf("missing slug")
 	}
 	r := &Rule{
+		Slug:        rr.Slug,
 		Name:        rr.Name,
-		Description: rr.Description,
 		Priority:    100,
 		Source:      source,
 		Enabled:     rr.Enabled == nil || *rr.Enabled,

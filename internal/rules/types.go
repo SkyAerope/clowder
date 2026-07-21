@@ -31,8 +31,8 @@ const (
 
 // Rule 是一条完整规则。
 type Rule struct {
+	Slug        string
 	Name        string
-	Description string
 	Priority    int // 默认 100，越小越优先
 	Source      int // SourceManifest / SourceUserFile / SourceBuiltin
 	Builtin     bool
