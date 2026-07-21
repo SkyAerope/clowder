@@ -67,7 +67,7 @@ func Validate(all []*Rule, ctx *ValidationContext) []ValidationWarning {
 	seen := map[sig][]string{}
 	for _, r := range all {
 		k := sig{r.TriggerKey(), r.Priority}
-		seen[k] = append(seen[k], r.Name)
+			seen[k] = append(seen[k], r.Slug)
 	}
 	for k, names := range seen {
 		if len(names) > 1 {
@@ -88,12 +88,12 @@ func Validate(all []*Rule, ctx *ValidationContext) []ValidationWarning {
 				if ctx != nil {
 					if scope != "" {
 						if hasCheck, ok := ctx.Providers[scope]; ok && !hasCheck {
-							add(r.Name, "provider %s 未定义 check 脚本，该规则的 %s 不会执行", scope, a.Kind)
+					add(r.Slug, "provider %s 未定义 check 脚本，该规则的 %s 不会执行", scope, a.Kind)
 						}
 					} else {
 						for p, hasCheck := range ctx.Providers {
 							if !hasCheck {
-								add(r.Name, "provider %s 未定义 check 脚本，该规则的 %s 对其不会执行", p, a.Kind)
+								add(r.Slug, "provider %s 未定义 check 脚本，该规则的 %s 对其不会执行", p, a.Kind)
 							}
 						}
 					}
@@ -101,23 +101,23 @@ func Validate(all []*Rule, ctx *ValidationContext) []ValidationWarning {
 			}
 			// 3. check/schedule 触发器下 capture 无报文可抓
 			if a.Kind == "capture" && r.When.Type() != "upstream" {
-				add(r.Name, "%s 触发器下 capture 无报文可抓（no-op）", r.When.Type())
+					add(r.Slug, "%s 触发器下 capture 无报文可抓（no-op）", r.When.Type())
 			}
 		}
 		// 4. 引用的 provider / model 不存在
 		if ctx != nil {
 			if p := r.When.Provider; p != "" {
 				if _, ok := ctx.Providers[p]; !ok {
-					add(r.Name, "引用的 provider %q 不存在", p)
+						add(r.Slug, "引用的 provider %q 不存在", p)
 				} else if m := r.When.Model; m != "" {
 					if models, ok := ctx.ProviderModels[p]; ok && len(models) > 0 && !models[m] {
-						add(r.Name, "provider %q 当前模型列表中没有 %q（已删除或被黑白名单排除）", p, m)
+							add(r.Slug, "provider %q 当前模型列表中没有 %q（已删除或被黑白名单排除）", p, m)
 					}
 				}
 			}
 			if sp := r.When.ScopeProvider; sp != "" {
 				if _, ok := ctx.Providers[sp]; !ok {
-					add(r.Name, "scope 引用的 provider %q 不存在", sp)
+						add(r.Slug, "scope 引用的 provider %q 不存在", sp)
 				}
 			}
 		}
@@ -126,7 +126,7 @@ func Validate(all []*Rule, ctx *ValidationContext) []ValidationWarning {
 		// 其它情形（无 ttft_over_ms、非 upstream）上游已结束或无可等，该规则不会执行。
 		if r.Route.Single == RouteWait {
 			if r.When.Type() != "upstream" || r.When.TTFTOverMs == 0 {
-				add(r.Name, "route=wait（继续等待）仅适用于含 TTFT 超时（ttft_over_ms）的上游触发器，否则上游已结束、无可等，该规则不会执行")
+				add(r.Slug, "route=wait（继续等待）仅适用于含 TTFT 超时（ttft_over_ms）的上游触发器，否则上游已结束、无可等，该规则不会执行")
 			}
 		}
 
@@ -134,12 +134,12 @@ func Validate(all []*Rule, ctx *ValidationContext) []ValidationWarning {
 		// 不可能同时命中——一次 attempt 只有一种结局。
 		if r.When.Type() == "upstream" && r.When.TTFTOverMs > 0 &&
 			(r.When.StatusCode != "" || r.When.BodyContains != "" || r.When.BodyRegex != nil || r.When.Transport != "" || r.When.ErrorAny) {
-			add(r.Name, "when 同时含 TTFT 超时（上游未返回）与 status_code/body/transport/error（已出结局）条件，二者互斥，该规则永不命中")
+			add(r.Slug, "when 同时含 TTFT 超时（上游未返回）与 status_code/body/transport/error（已出结局）条件，二者互斥，该规则永不命中")
 		}
 
 		// 7. route=passthrough（透传响应）需要上游已返回；when 含 TTFT 超时时无响应可透。
 		if r.Route.Single == RoutePassthrough && r.When.Type() == "upstream" && r.When.TTFTOverMs > 0 {
-			add(r.Name, "route=passthrough（透传响应）需要上游已返回，但 when 含 TTFT 超时（上游未返回），应改用 next_*/retry_same/wait")
+			add(r.Slug, "route=passthrough（透传响应）需要上游已返回，但 when 含 TTFT 超时（上游未返回），应改用 next_*/retry_same/wait")
 		}
 	}
 	return warns
