@@ -8,7 +8,7 @@ defineProps<{ detail: ProviderDetail }>()
 
 <template>
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-    <Card title="Manifest">
+    <Card title="Manifest" :class="!detail.manifest.has_register && 'lg:col-span-2'">
       <dl class="grid grid-cols-2 gap-y-2 text-sm">
         <dt class="text-muted-foreground">base_url</dt><dd class="font-mono text-xs break-all">{{ detail.manifest.base_url }}</dd>
         <dt class="text-muted-foreground">key_strategy</dt><dd>{{ detail.manifest.key_strategy }}</dd>
@@ -22,14 +22,13 @@ defineProps<{ detail: ProviderDetail }>()
       </dl>
     </Card>
 
-    <Card title="注册状态">
-      <dl v-if="detail.manifest.has_register" class="grid grid-cols-2 gap-y-2 text-sm">
+    <Card v-if="detail.manifest.has_register" title="注册状态">
+      <dl class="grid grid-cols-2 gap-y-2 text-sm">
         <dt class="text-muted-foreground">上次注册</dt><dd>{{ formatProviderTime(detail.last_register_at) }}</dd>
         <dt class="text-muted-foreground">耗时</dt><dd>{{ detail.last_register_duration > 0 ? detail.last_register_duration + 'ms' : '—' }}</dd>
         <dt class="text-muted-foreground">上次错误</dt>
         <dd :class="detail.last_register_error && 'text-destructive'">{{ detail.last_register_error || '无' }}</dd>
       </dl>
-      <p v-else class="text-sm text-muted-foreground">无注册脚本</p>
     </Card>
   </div>
 </template>

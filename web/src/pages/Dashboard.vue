@@ -30,7 +30,7 @@ async function load() {
     models.value = m ?? {}
     auto.value = a ?? []
   } catch (e: any) {
-    error.value = e.status === 401 ? '看板未公开，请先登录管理面板' : e.message
+    error.value = e.status === 401 ? '看板未公开，请先登录管理面板' : `看板数据加载失败：${e.message}`
   } finally {
     loading.value = false
     loaded.value = true
