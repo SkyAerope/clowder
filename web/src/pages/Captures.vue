@@ -66,12 +66,12 @@ onMounted(load)
         <Card v-for="c in captures" :key="c.id" class="py-0 gap-0">
         <button class="w-full flex cursor-pointer items-center gap-3 p-3 text-sm text-left hover:bg-muted/50"
           @click="expanded = expanded === c.id ? null : c.id">
-          <span class="text-muted-foreground">#{{ c.id }}</span>
+          <span class="w-7 shrink-0 text-right tabular-nums text-muted-foreground">#{{ c.id }}</span>
           <span class="font-medium">{{ c.provider }}</span>
           <Badge variant="secondary">{{ c.matched_slug }}</Badge>
           <span v-if="c.fingerprint" class="font-mono text-xs text-muted-foreground" :title="c.fingerprint">{{ c.fingerprint.slice(0, 8) }}</span>
           <ShieldCheck v-if="c.redacted" class="size-4 text-success" title="已脱敏" />
-          <span class="ml-auto text-xs text-muted-foreground whitespace-nowrap">
+          <span class="ml-auto whitespace-nowrap tabular-nums text-xs text-muted-foreground">
             {{ new Date(c.created_at + 'Z').toLocaleString() }}
           </span>
         </button>
