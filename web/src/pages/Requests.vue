@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import { api, type RequestLog } from '../api'
 import TableSkeleton from '../components/TableSkeleton.vue'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
-import { RefreshCw, ChevronLeft, ChevronRight, GitBranch } from 'lucide-vue-next'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { RefreshCw, ChevronLeft, ChevronRight, GitBranch, Fingerprint, TriangleAlert } from 'lucide-vue-next'
 
 const logs = ref<RequestLog[]>([])
 const loaded = ref(false)
@@ -29,8 +31,10 @@ async function load() {
 
 async function showTrace(id: string) {
   traceID.value = id
-  trace.value = (await api.get<RequestLog[]>(`/api/admin/trace/${id}`)) ?? []
+  trace.value = null
   traceOpen.value = true
+  await nextTick()
+  trace.value = (await api.get<RequestLog[]>(`/api/admin/trace/${id}`)) ?? []
 }
 
 function statusClass(code?: number) {
@@ -83,7 +87,22 @@ onMounted(load)
             <TableCell class="text-xs">{{ l.ttft_ms != null ? l.ttft_ms + 'ms' : '—' }}</TableCell>
             <TableCell class="text-xs">{{ l.latency_ms != null ? l.latency_ms + 'ms' : '—' }}</TableCell>
             <TableCell class="text-xs">{{ l.matched_slug || '—' }}</TableCell>
-            <TableCell class="text-xs text-destructive max-w-56 truncate" :title="l.error_msg">{{ l.error_msg || '' }}</TableCell>
+            <TableCell class="text-xs text-destructive max-w-56">
+              <Tooltip v-if="l.error_fingerprint">
+                <TooltipTrigger as-child>
+                  <span class="flex w-fit items-center gap-1 text-foreground" tabindex="0">
+                    <Fingerprint class="size-3 shrink-0" aria-hidden="true" />
+                    <span>{{ l.error_fingerprint.slice(0, 8) }}</span>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent class="max-w-96">
+                  <div class="flex flex-col gap-1">
+                    <div class="flex items-start gap-2"><Fingerprint class="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-label="完整指纹" /><span class="font-mono">{{ l.error_fingerprint }}</span></div>
+                    <div v-if="l.error_msg" class="flex items-start gap-2 break-all"><TriangleAlert class="mt-0.5 size-4 shrink-0 text-destructive" aria-label="错误详情" />{{ l.error_msg }}</div>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            </TableCell>
           </TableRow>
           <TableEmpty v-if="!logs.length" :colspan="10">暂无请求</TableEmpty>
         </TableBody>
@@ -96,7 +115,16 @@ onMounted(load)
         <DialogHeader>
           <DialogTitle>Trace <span class="font-mono text-sm text-muted-foreground">{{ traceID }}</span></DialogTitle>
         </DialogHeader>
-        <div v-if="trace" class="space-y-2">
+        <div v-if="trace === null" class="flex flex-col gap-3" role="status" aria-label="正在加载 Trace">
+          <div v-for="i in 3" :key="i" class="flex gap-3">
+            <Skeleton class="size-6 shrink-0 rounded-full" />
+            <div class="flex min-w-0 flex-1 flex-col gap-2 py-0.5">
+              <Skeleton class="h-4 w-48 max-w-full" />
+              <Skeleton class="h-3 w-64 max-w-full" />
+            </div>
+          </div>
+        </div>
+        <div v-else class="space-y-2">
           <div v-for="(t, i) in trace" :key="t.id" class="flex gap-3">
             <div class="flex flex-col items-center">
               <div class="size-6 rounded-full flex items-center justify-center text-xs font-semibold"

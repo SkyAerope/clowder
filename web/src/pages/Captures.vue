@@ -69,7 +69,7 @@ onMounted(load)
           <span class="text-muted-foreground">#{{ c.id }}</span>
           <span class="font-medium">{{ c.provider }}</span>
           <Badge variant="secondary">{{ c.matched_slug }}</Badge>
-          <span v-if="c.fingerprint" class="font-mono text-xs text-muted-foreground">{{ c.fingerprint.slice(0, 12) }}</span>
+          <span v-if="c.fingerprint" class="font-mono text-xs text-muted-foreground" :title="c.fingerprint">{{ c.fingerprint.slice(0, 8) }}</span>
           <ShieldCheck v-if="c.redacted" class="size-4 text-success" title="已脱敏" />
           <span class="ml-auto text-xs text-muted-foreground whitespace-nowrap">
             {{ new Date(c.created_at + 'Z').toLocaleString() }}

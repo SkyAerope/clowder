@@ -144,7 +144,7 @@ onMounted(load)
         <TableSkeleton v-if="!loaded" :cols="9" />
         <TableBody v-else>
           <TableRow v-for="g in groups" :key="g.fingerprint">
-            <TableCell class="font-mono text-xs">{{ g.fingerprint.slice(0, 12) }}</TableCell>
+            <TableCell class="font-mono text-xs" :title="g.fingerprint">{{ g.fingerprint.slice(0, 8) }}</TableCell>
             <TableCell>{{ g.provider }}</TableCell>
             <TableCell>{{ g.status_code ?? '—' }}</TableCell>
             <TableCell class="font-mono text-xs max-w-40 truncate" :title="g.models">{{ g.models }}</TableCell>
