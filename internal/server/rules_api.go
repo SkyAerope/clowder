@@ -47,7 +47,7 @@ func registerRulesAPI(mux *http.ServeMux, admin func(http.HandlerFunc) http.Hand
 	mux.HandleFunc("GET /api/admin/rules/presets", admin(func(w http.ResponseWriter, r *http.Request) {
 		existing := map[string]bool{}
 		for _, ru := range a.Engine.Rules() {
-			existing[ru.Name] = true
+			existing[ru.Slug] = true
 		}
 		type pview struct {
 			Rule   map[string]any `json:"rule"`
@@ -59,10 +59,16 @@ func registerRulesAPI(mux *http.ServeMux, admin func(http.HandlerFunc) http.Hand
 			Rules []map[string]any `yaml:"rules"`
 		}
 		yaml.Unmarshal([]byte(rules.PresetRulesYAML), &doc)
-		for _, rm := range doc.Rules {
-			name, _ := rm["name"].(string)
-			y, _ := yaml.Marshal([]map[string]any{rm})
-			out = append(out, pview{Rule: rm, YAML: string(y), Exists: existing[name]})
+		for _, entry := range doc.Rules {
+			for slug, value := range entry {
+				properties, _ := value.(map[string]any)
+				rule := map[string]any{"slug": slug}
+				for key, field := range properties {
+					rule[key] = field
+				}
+				y, _ := yaml.Marshal([]map[string]any{entry})
+				out = append(out, pview{Rule: rule, YAML: string(y), Exists: existing[slug]})
+			}
 		}
 		jsonOK(w, out)
 	}))

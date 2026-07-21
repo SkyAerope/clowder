@@ -134,7 +134,7 @@ func TestAPI_rules_returns_stable_view_contract(t *testing.T) {
 	if !ok {
 		t.Fatalf("rule type = %T, want object", ruleList[0])
 	}
-	requireObjectKeys(t, rule, "builtin", "description", "detail", "enabled", "name", "priority", "source", "type")
+	requireObjectKeys(t, rule, "builtin", "detail", "enabled", "name", "priority", "slug", "source", "type")
 	detail, ok := rule["detail"].(map[string]any)
 	if !ok {
 		t.Fatalf("detail type = %T, want object", rule["detail"])

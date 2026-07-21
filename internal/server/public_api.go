@@ -16,7 +16,7 @@ func registerPublicAPI(mux *http.ServeMux, public func(http.HandlerFunc) http.Ha
 			DisplayName   string `json:"display_name"`
 			Status        string `json:"status"`
 			StatusReason  string `json:"status_reason,omitempty"`
-			LastRule      string `json:"last_rule,omitempty"`
+			LastSlug      string `json:"last_slug,omitempty"`
 			LastErrorAt   string `json:"last_error_at,omitempty"`
 			LastSuccessAt string `json:"last_success_at,omitempty"`
 			ActiveKeys    int    `json:"active_keys"`
@@ -75,7 +75,7 @@ func registerPublicAPI(mux *http.ServeMux, public func(http.HandlerFunc) http.Ha
 			out = append(out, pv{
 				Name: name, DisplayName: ps.Manifest.DisplayName,
 				Status: status, StatusReason: statusReason,
-				LastRule: snapshot.LastRule, LastErrorAt: snapshot.LastError,
+				LastSlug: snapshot.LastSlug, LastErrorAt: snapshot.LastError,
 				LastSuccessAt: snapshot.LastSuccess,
 				ActiveKeys:    usable, TotalKeys: total,
 				AvgTTFTMs: avg, Priority: ps.Manifest.Routing.Priority,
