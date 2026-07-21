@@ -161,11 +161,26 @@ func TestConcurrentPickKeepsSingleActive(t *testing.T) {
 func TestReadPathsRecoverExpiredKeys(t *testing.T) {
 	tests := []struct {
 		name string
-		read func(*Pool, int64)
+		read func(*testing.T, *Pool, int64)
 	}{
-		{name: "Keys", read: func(p *Pool, _ int64) { _ = p.Keys("test") }},
-		{name: "UsableCount", read: func(p *Pool, _ int64) { p.UsableCount("test") }},
-		{name: "FindByID", read: func(p *Pool, id int64) { _ = p.FindByID(id) }},
+		{name: "Keys", read: func(t *testing.T, p *Pool, id int64) {
+			got := p.Keys("test")
+			if len(got) != 1 || got[0].ID != id || got[0].Status != store.KeyIdle || got[0].RateLimitUntil != nil || got[0].RateLimitCount != 5 {
+				t.Fatalf("Keys result = %#v", got)
+			}
+		}},
+		{name: "UsableCount", read: func(t *testing.T, p *Pool, _ int64) {
+			usable, total := p.UsableCount("test")
+			if usable != 1 || total != 1 {
+				t.Fatalf("UsableCount result = %d/%d, want 1/1", usable, total)
+			}
+		}},
+		{name: "FindByID", read: func(t *testing.T, p *Pool, id int64) {
+			got := p.FindByID(id)
+			if got == nil || got.ID != id || got.Status != store.KeyIdle || got.RateLimitUntil != nil || got.RateLimitCount != 5 {
+				t.Fatalf("FindByID result = %#v", got)
+			}
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -176,12 +191,7 @@ func TestReadPathsRecoverExpiredKeys(t *testing.T) {
 			if err := p.MarkRateLimited(keyID, time.Now().Add(-time.Second), 5); err != nil {
 				t.Fatal(err)
 			}
-			tt.read(p, keyID)
-
-			key := p.FindByID(keyID)
-			if key.Status != store.KeyIdle || key.RateLimitUntil != nil || key.RateLimitCount != 5 {
-				t.Fatalf("recovered key = status %q until %v count %d", key.Status, key.RateLimitUntil, key.RateLimitCount)
-			}
+			tt.read(t, p, keyID)
 			rows, err := p.st.ListKeys("test")
 			if err != nil {
 				t.Fatal(err)
