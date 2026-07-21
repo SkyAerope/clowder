@@ -9,7 +9,7 @@ import (
 type Capture struct {
 	ID              int64  `json:"id"`
 	RequestID       int64  `json:"request_id"`
-	MatchedRule     string `json:"matched_rule"`
+	MatchedSlug     string `json:"matched_slug"`
 	Fingerprint     string `json:"fingerprint,omitempty"`
 	Provider        string `json:"provider"`
 	Model           string `json:"model,omitempty"`
@@ -24,10 +24,10 @@ type Capture struct {
 // InsertCapture 写入抓包并执行环形淘汰（每个指纹至少保留 1 条）。
 func (s *Store) InsertCapture(c *Capture, maxRecords int) (int64, error) {
 	res, err := s.db.Exec(`INSERT INTO captures
-		(request_id, matched_rule, fingerprint, provider, model,
+		(request_id, matched_slug, fingerprint, provider, model,
 		 request_headers, request_body, response_headers, response_body, redacted)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		c.RequestID, c.MatchedRule, nullable(c.Fingerprint), c.Provider, nullable(c.Model),
+		c.RequestID, c.MatchedSlug, nullable(c.Fingerprint), c.Provider, nullable(c.Model),
 		nullable(c.RequestHeaders), nullable(c.RequestBody),
 		nullable(c.ResponseHeaders), nullable(c.ResponseBody), boolInt(c.Redacted))
 	if err != nil {
@@ -54,13 +54,13 @@ func (s *Store) evictCaptures(maxRecords int) {
 
 // ListCaptures 按规则或指纹过滤查询。
 func (s *Store) ListCaptures(rule, fingerprint string, limit int) ([]*Capture, error) {
-	q := `SELECT id, request_id, matched_rule, COALESCE(fingerprint,''), provider, COALESCE(model,''),
+		q := `SELECT id, request_id, matched_slug, COALESCE(fingerprint,''), provider, COALESCE(model,''),
 		COALESCE(request_headers,''), COALESCE(request_body,''),
 		COALESCE(response_headers,''), COALESCE(response_body,''), redacted, COALESCE(created_at,'')
 		FROM captures WHERE 1=1`
 	var args []any
 	if rule != "" {
-		q += ` AND matched_rule=?`
+		q += ` AND matched_slug=?`
 		args = append(args, rule)
 	}
 	if fingerprint != "" {
@@ -78,7 +78,7 @@ func (s *Store) ListCaptures(rule, fingerprint string, limit int) ([]*Capture, e
 	for rows.Next() {
 		c := &Capture{}
 		var redacted int
-		if err := rows.Scan(&c.ID, &c.RequestID, &c.MatchedRule, &c.Fingerprint, &c.Provider, &c.Model,
+			if err := rows.Scan(&c.ID, &c.RequestID, &c.MatchedSlug, &c.Fingerprint, &c.Provider, &c.Model,
 			&c.RequestHeaders, &c.RequestBody, &c.ResponseHeaders, &c.ResponseBody, &redacted, &c.CreatedAt); err != nil {
 			return nil, err
 		}

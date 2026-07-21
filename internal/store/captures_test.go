@@ -10,9 +10,9 @@ func TestCaptures_insert_list_filter_and_limit_newest_first(t *testing.T) {
 	// Given
 	st := newTestStore(t)
 	fixtures := []*store.Capture{
-		{RequestID: 1, MatchedRule: "retry", Fingerprint: "fp-a", Provider: "alpha", Model: "m1", RequestHeaders: `{"x":"1"}`, RequestBody: "one", ResponseHeaders: `{"y":"2"}`, ResponseBody: "failed", Redacted: true},
-		{RequestID: 2, MatchedRule: "fallback", Fingerprint: "fp-b", Provider: "beta", Model: "m2", RequestBody: "two"},
-		{RequestID: 3, MatchedRule: "retry", Fingerprint: "fp-a", Provider: "alpha", Model: "m3", RequestBody: "three"},
+		{RequestID: 1, MatchedSlug: "retry", Fingerprint: "fp-a", Provider: "alpha", Model: "m1", RequestHeaders: `{"x":"1"}`, RequestBody: "one", ResponseHeaders: `{"y":"2"}`, ResponseBody: "failed", Redacted: true},
+		{RequestID: 2, MatchedSlug: "fallback", Fingerprint: "fp-b", Provider: "beta", Model: "m2", RequestBody: "two"},
+		{RequestID: 3, MatchedSlug: "retry", Fingerprint: "fp-a", Provider: "alpha", Model: "m3", RequestBody: "three"},
 	}
 	ids := make([]int64, 0, len(fixtures))
 	for _, fixture := range fixtures {
@@ -51,10 +51,10 @@ func TestCaptures_retention_keeps_latest_capture_for_each_fingerprint(t *testing
 	// Given
 	st := newTestStore(t)
 	fixtures := []*store.Capture{
-		{RequestID: 1, MatchedRule: "retry", Fingerprint: "fp-a", Provider: "alpha", RequestBody: "old-a"},
-		{RequestID: 2, MatchedRule: "retry", Provider: "alpha", RequestBody: "unfingerprinted"},
-		{RequestID: 3, MatchedRule: "retry", Fingerprint: "fp-b", Provider: "alpha", RequestBody: "latest-b"},
-		{RequestID: 4, MatchedRule: "retry", Fingerprint: "fp-a", Provider: "alpha", RequestBody: "latest-a"},
+		{RequestID: 1, MatchedSlug: "retry", Fingerprint: "fp-a", Provider: "alpha", RequestBody: "old-a"},
+		{RequestID: 2, MatchedSlug: "retry", Provider: "alpha", RequestBody: "unfingerprinted"},
+		{RequestID: 3, MatchedSlug: "retry", Fingerprint: "fp-b", Provider: "alpha", RequestBody: "latest-b"},
+		{RequestID: 4, MatchedSlug: "retry", Fingerprint: "fp-a", Provider: "alpha", RequestBody: "latest-a"},
 	}
 	for _, fixture := range fixtures {
 		if _, err := st.InsertCapture(fixture, 2); err != nil {
