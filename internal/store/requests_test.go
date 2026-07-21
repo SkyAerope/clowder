@@ -15,7 +15,7 @@ func TestRequests_list_and_trace_apply_documented_order_and_pagination(t *testin
 	fixtures := []*store.RequestLog{
 		{TraceID: "trace-a", AttemptNo: 2, Provider: "beta", Model: "m2", StatusCode: &status200, TTFTMs: &ttft, LatencyMs: &latency},
 		{TraceID: "trace-b", AttemptNo: 1, Provider: "gamma", Model: "m3"},
-		{TraceID: "trace-a", AttemptNo: 1, KeyID: &keyID, Provider: "alpha", Model: "m1", StatusCode: &status429, MatchedRule: "retry", ErrorMsg: "limited", ErrorFingerprint: "fp-rate"},
+		{TraceID: "trace-a", AttemptNo: 1, KeyID: &keyID, Provider: "alpha", Model: "m1", StatusCode: &status429, MatchedSlug: "retry", ErrorMsg: "limited", ErrorFingerprint: "fp-rate"},
 	}
 	ids := make([]int64, 0, len(fixtures))
 	for _, fixture := range fixtures {
@@ -45,7 +45,7 @@ func TestRequests_list_and_trace_apply_documented_order_and_pagination(t *testin
 	}
 	first := trace[0]
 	if first.KeyID == nil || *first.KeyID != keyID || first.StatusCode == nil || *first.StatusCode != status429 ||
-		first.MatchedRule != "retry" || first.ErrorMsg != "limited" || first.ErrorFingerprint != "fp-rate" {
+		first.MatchedSlug != "retry" || first.ErrorMsg != "limited" || first.ErrorFingerprint != "fp-rate" {
 		t.Fatalf("first attempt = %#v", first)
 	}
 	second := trace[1]
@@ -59,11 +59,11 @@ func TestErrors_aggregate_distinct_values_and_filter_by_rule(t *testing.T) {
 	st := newTestStore(t)
 	status429, status503 := 429, 503
 	fixtures := []*store.RequestLog{
-		{TraceID: "t1", AttemptNo: 1, Provider: "alpha", Model: "m1", StatusCode: &status429, MatchedRule: "retry", ErrorMsg: "first", ErrorFingerprint: "fp-a"},
-		{TraceID: "t2", AttemptNo: 1, Provider: "alpha", Model: "m2", StatusCode: &status429, MatchedRule: "fallback", ErrorMsg: "second", ErrorFingerprint: "fp-a"},
-		{TraceID: "t3", AttemptNo: 1, Provider: "alpha", Model: "m1", StatusCode: &status429, MatchedRule: "retry", ErrorMsg: "third", ErrorFingerprint: "fp-a"},
-		{TraceID: "t4", AttemptNo: 1, Provider: "beta", Model: "m3", StatusCode: &status503, MatchedRule: "retry", ErrorMsg: "unavailable", ErrorFingerprint: "fp-b"},
-		{TraceID: "t5", AttemptNo: 1, Provider: "alpha", Model: "m1", StatusCode: &status503, MatchedRule: "retry", ErrorMsg: "not grouped"},
+		{TraceID: "t1", AttemptNo: 1, Provider: "alpha", Model: "m1", StatusCode: &status429, MatchedSlug: "retry", ErrorMsg: "first", ErrorFingerprint: "fp-a"},
+		{TraceID: "t2", AttemptNo: 1, Provider: "alpha", Model: "m2", StatusCode: &status429, MatchedSlug: "fallback", ErrorMsg: "second", ErrorFingerprint: "fp-a"},
+		{TraceID: "t3", AttemptNo: 1, Provider: "alpha", Model: "m1", StatusCode: &status429, MatchedSlug: "retry", ErrorMsg: "third", ErrorFingerprint: "fp-a"},
+		{TraceID: "t4", AttemptNo: 1, Provider: "beta", Model: "m3", StatusCode: &status503, MatchedSlug: "retry", ErrorMsg: "unavailable", ErrorFingerprint: "fp-b"},
+		{TraceID: "t5", AttemptNo: 1, Provider: "alpha", Model: "m1", StatusCode: &status503, MatchedSlug: "retry", ErrorMsg: "not grouped"},
 	}
 	for _, fixture := range fixtures {
 		if _, err := st.InsertRequest(fixture); err != nil {

@@ -16,7 +16,7 @@ type RequestLog struct {
 	StatusCode       *int   `json:"status_code,omitempty"`
 	TTFTMs           *int64 `json:"ttft_ms,omitempty"`
 	LatencyMs        *int64 `json:"latency_ms,omitempty"`
-	MatchedRule      string `json:"matched_rule,omitempty"`
+	MatchedSlug      string `json:"matched_slug,omitempty"`
 	ErrorMsg         string `json:"error_msg,omitempty"`
 	ErrorFingerprint string `json:"error_fingerprint,omitempty"`
 	CreatedAt        string `json:"created_at"`
@@ -25,11 +25,11 @@ type RequestLog struct {
 // InsertRequest 写入一条 attempt 日志。
 func (s *Store) InsertRequest(r *RequestLog) (int64, error) {
 	res, err := s.db.Exec(`INSERT INTO requests
-		(trace_id, attempt_no, key_id, provider, model, status_code, ttft_ms, latency_ms, matched_rule, error_msg, error_fingerprint)
+		(trace_id, attempt_no, key_id, provider, model, status_code, ttft_ms, latency_ms, matched_slug, error_msg, error_fingerprint)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.TraceID, r.AttemptNo, r.KeyID, r.Provider, r.Model,
 		r.StatusCode, r.TTFTMs, r.LatencyMs,
-		nullable(r.MatchedRule), nullable(r.ErrorMsg), nullable(r.ErrorFingerprint))
+		nullable(r.MatchedSlug), nullable(r.ErrorMsg), nullable(r.ErrorFingerprint))
 	if err != nil {
 		return 0, fmt.Errorf("insert request: %w", err)
 	}
@@ -39,7 +39,7 @@ func (s *Store) InsertRequest(r *RequestLog) (int64, error) {
 // ListRequests 分页查询（按 id 倒序）。
 func (s *Store) ListRequests(limit, offset int) ([]*RequestLog, error) {
 	rows, err := s.db.Query(`SELECT id, trace_id, attempt_no, key_id, provider, model,
-		status_code, ttft_ms, latency_ms, COALESCE(matched_rule,''), COALESCE(error_msg,''),
+		status_code, ttft_ms, latency_ms, COALESCE(matched_slug,''), COALESCE(error_msg,''),
 		COALESCE(error_fingerprint,''), COALESCE(created_at,'')
 		FROM requests ORDER BY id DESC LIMIT ? OFFSET ?`, limit, offset)
 	if err != nil {
@@ -52,7 +52,7 @@ func (s *Store) ListRequests(limit, offset int) ([]*RequestLog, error) {
 // ListTrace 按 trace_id 查询完整重试链（按 attempt_no 升序）。
 func (s *Store) ListTrace(traceID string) ([]*RequestLog, error) {
 	rows, err := s.db.Query(`SELECT id, trace_id, attempt_no, key_id, provider, model,
-		status_code, ttft_ms, latency_ms, COALESCE(matched_rule,''), COALESCE(error_msg,''),
+		status_code, ttft_ms, latency_ms, COALESCE(matched_slug,''), COALESCE(error_msg,''),
 		COALESCE(error_fingerprint,''), COALESCE(created_at,'')
 		FROM requests WHERE trace_id=? ORDER BY attempt_no, id`, traceID)
 	if err != nil {
@@ -70,7 +70,7 @@ func scanRequests(rows *sql.Rows) ([]*RequestLog, error) {
 		var status sql.NullInt64
 		var ttft, latency sql.NullInt64
 		if err := rows.Scan(&r.ID, &r.TraceID, &r.AttemptNo, &keyID, &r.Provider, &r.Model,
-			&status, &ttft, &latency, &r.MatchedRule, &r.ErrorMsg, &r.ErrorFingerprint, &r.CreatedAt); err != nil {
+				&status, &ttft, &latency, &r.MatchedSlug, &r.ErrorMsg, &r.ErrorFingerprint, &r.CreatedAt); err != nil {
 			return nil, err
 		}
 		if keyID.Valid {
@@ -107,12 +107,12 @@ type ErrorGroup struct {
 // AggregateErrors 按错误指纹全量聚合；rule 非空时只看命中该规则的。
 func (s *Store) AggregateErrors(rule string, limit int) ([]*ErrorGroup, error) {
 	q := `SELECT error_fingerprint, provider, status_code,
-		GROUP_CONCAT(DISTINCT model), GROUP_CONCAT(DISTINCT matched_rule),
+			GROUP_CONCAT(DISTINCT model), GROUP_CONCAT(DISTINCT matched_slug),
 		COUNT(*), MIN(created_at), MAX(created_at), MAX(COALESCE(error_msg,''))
 		FROM requests WHERE error_fingerprint IS NOT NULL`
 	var args []any
 	if rule != "" {
-		q += ` AND matched_rule = ?`
+			q += ` AND matched_slug = ?`
 		args = append(args, rule)
 	}
 	q += ` GROUP BY error_fingerprint ORDER BY MAX(created_at) DESC LIMIT ?`
