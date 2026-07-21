@@ -61,7 +61,7 @@ export interface Provider {
   display_name: string
   status: string
   status_reason?: string
-  last_rule?: string
+  last_slug?: string
   last_error_at?: string
   last_success_at?: string
   active_keys: number
@@ -113,7 +113,7 @@ export interface RequestLog {
   status_code?: number
   ttft_ms?: number
   latency_ms?: number
-  matched_rule?: string
+  matched_slug?: string
   error_msg?: string
   error_fingerprint?: string
   created_at: string
@@ -134,7 +134,7 @@ export interface ErrorGroup {
 export interface Capture {
   id: number
   request_id: number
-  matched_rule: string
+  matched_slug: string
   fingerprint?: string
   provider: string
   request_headers?: string
@@ -153,12 +153,12 @@ export interface HealthSnapshot {
   error_count: number
   last_error_at?: string
   last_success_at?: string
-  last_rule?: string
+  last_slug?: string
 }
 
 export interface RuleView {
+  slug: string
   name: string
-  description: string
   priority: number
   source: number
   builtin: boolean
