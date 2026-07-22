@@ -12,7 +12,8 @@ import { Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-vue-next'
 import {
   ACTION_KINDS, CAPTURE_FIELDS, CAPTURE_LABELS, CHECK_STATUS, IF_FIELDS, IF_OPS, MARK_STATUS, WHEN_FIELDS,
   RACE_ROUTES, ROUTES, TRANSPORTS, TYPE_LABELS, blankRule, lbl, routeDisabled,
-  summarize, whenFieldDisabled, actionKindDisabled, nextActionKind, hasUnusedActionKind, type EditAction, type EditRule,
+  summarize, whenFieldDisabled, actionKindDisabled, nextActionKind, hasUnusedActionKind,
+  retryConditionsDisabled, routeControlsDisabled, type EditAction, type EditRule,
 } from '@/lib/rule-editor'
 
 const props = withDefaults(defineProps<{ allowMultiple?: boolean }>(), { allowMultiple: true })
@@ -80,25 +81,25 @@ function toggleRace(rule: EditRule, route: string): void { const index = rule.ro
         </div>
         <div v-else-if="rule.whenType === 'check'" class="space-y-2"><Label class="text-xs text-muted-foreground">触发条件 (when)：探活状态命中</Label><Select v-model="rule.check_status"><SelectTrigger class="w-56"><SelectValue /></SelectTrigger><SelectContent :body-lock="false"><SelectItem v-for="status in CHECK_STATUS" :key="status.v" :value="status.v">{{ status.label }}</SelectItem></SelectContent></Select></div>
         <div v-else class="space-y-2"><Label class="text-xs text-muted-foreground">触发条件 (when)：定时</Label><div class="flex flex-wrap gap-3"><div class="space-y-1"><Label class="text-xs text-muted-foreground">cron 表达式</Label><Input v-model="rule.cron" class="w-48 font-mono" placeholder="0 */6 * * *" /></div><div class="space-y-1"><Label class="text-xs text-muted-foreground">scope provider（可选）</Label><Input v-model="rule.scope_provider" class="w-48" placeholder="限定 provider" /></div></div></div>
-        <div class="space-y-2">
+        <div class="space-y-2" :class="{ 'opacity-60': retryConditionsDisabled(rule) }" :title="retryConditionsDisabled(rule) ? '定时触发没有请求重试链上下文' : undefined">
           <Label class="text-xs text-muted-foreground">附加条件 (if)</Label>
           <div v-for="(condition, conditionIndex) in rule.ifs" :key="conditionIndex" class="flex items-center gap-2">
-            <Select v-model="condition.field">
+            <Select v-model="condition.field" :disabled="retryConditionsDisabled(rule)">
               <SelectTrigger class="w-48"><SelectValue /></SelectTrigger>
               <SelectContent :body-lock="false">
                 <SelectItem v-for="field in IF_FIELDS" :key="field.v" :value="field.v">{{ field.label }}</SelectItem>
               </SelectContent>
             </Select>
-            <Select v-model="condition.op">
+            <Select v-model="condition.op" :disabled="retryConditionsDisabled(rule)">
               <SelectTrigger class="w-24"><SelectValue /></SelectTrigger>
               <SelectContent :body-lock="false">
                 <SelectItem v-for="operator in IF_OPS" :key="operator.v" :value="operator.v">{{ operator.label }}</SelectItem>
               </SelectContent>
             </Select>
-            <Input v-model.number="condition.value" type="number" class="w-24" />
+            <Input v-model.number="condition.value" type="number" class="w-24" :disabled="retryConditionsDisabled(rule)" />
             <Button variant="ghost" size="icon-sm" class="text-destructive ml-auto hover:text-destructive" @click="rule.ifs.splice(conditionIndex, 1)"><Trash2 /></Button>
           </div>
-          <button type="button" class="text-muted-foreground hover:text-foreground hover:border-foreground/30 flex w-full cursor-pointer items-center justify-center gap-1 rounded-lg border border-dashed border-foreground/20 py-1.5 text-xs" @click="rule.ifs.push({ field: 'attempt_no', op: 'gte', value: 2 })"><Plus class="size-3" /> 加条件</button>
+          <button type="button" class="text-muted-foreground hover:text-foreground hover:border-foreground/30 flex w-full cursor-pointer items-center justify-center gap-1 rounded-lg border border-dashed border-foreground/20 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-50" :disabled="retryConditionsDisabled(rule)" @click="rule.ifs.push({ field: 'attempt_no', op: 'gte', value: 2 })"><Plus class="size-3" /> 加条件</button>
         </div>
         <div class="space-y-2">
           <Label class="text-xs text-muted-foreground">动作 (do)</Label>
@@ -137,17 +138,17 @@ function toggleRace(rule: EditRule, route: string): void { const index = rule.ro
           </div>
           <button type="button" class="text-muted-foreground hover:text-foreground hover:border-foreground/30 flex w-full cursor-pointer items-center justify-center gap-1 rounded-lg border border-dashed border-foreground/20 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-50" :disabled="!hasUnusedActionKind(rule, ACTION_KINDS.map((k) => k.v))" @click="addAction(rule)"><Plus class="size-3" /> 加动作</button>
         </div>
-        <div class="space-y-2">
+        <div class="space-y-2" :class="{ 'opacity-60': routeControlsDisabled(rule) }" :title="routeControlsDisabled(rule) ? '定时触发没有请求路由上下文' : undefined">
           <Label class="text-xs text-muted-foreground">路由 (route)</Label>
           <div class="flex items-start gap-2">
-            <Select v-model="rule.routeMode">
+            <Select v-model="rule.routeMode" :disabled="routeControlsDisabled(rule)">
               <SelectTrigger class="w-48"><SelectValue /></SelectTrigger>
               <SelectContent :body-lock="false">
                 <SelectItem value="single">单一</SelectItem>
                 <SelectItem value="race">双发竞速</SelectItem>
               </SelectContent>
             </Select>
-            <Select v-if="rule.routeMode === 'single'" v-model="rule.routeSingle">
+            <Select v-if="rule.routeMode === 'single'" v-model="rule.routeSingle" :disabled="routeControlsDisabled(rule)">
               <SelectTrigger class="w-56"><SelectValue /></SelectTrigger>
               <SelectContent :body-lock="false">
                 <SelectItem v-for="route in ROUTES" :key="route.v" :value="route.v" :disabled="routeDisabled(rule, route.v)">{{ route.label }}</SelectItem>
@@ -155,7 +156,7 @@ function toggleRace(rule: EditRule, route: string): void { const index = rule.ro
             </Select>
             <DropdownMenu v-else>
               <DropdownMenuTrigger as-child>
-                <button type="button" class="border-input focus-visible:border-ring focus-visible:ring-ring/50 flex h-8 min-w-56 w-fit cursor-pointer items-center justify-between gap-1.5 whitespace-nowrap rounded-lg border bg-transparent py-2 pr-2 pl-2.5 text-sm transition-colors select-none outline-none focus-visible:ring-3">
+                <button type="button" class="border-input focus-visible:border-ring focus-visible:ring-ring/50 flex h-8 min-w-56 w-fit cursor-pointer items-center justify-between gap-1.5 whitespace-nowrap rounded-lg border bg-transparent py-2 pr-2 pl-2.5 text-sm transition-colors select-none outline-none focus-visible:ring-3 disabled:cursor-not-allowed" :disabled="routeControlsDisabled(rule)">
                   <span class="flex flex-1 items-center gap-1">
                     <Badge v-for="route in rule.routeRace" :key="route" variant="secondary" class="shrink-0">{{ lbl(RACE_ROUTES, route) }}</Badge>
                     <span v-if="!rule.routeRace.length" class="text-muted-foreground">选择并发分支</span>

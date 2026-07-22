@@ -13,7 +13,14 @@ export function whenFieldDisabled(rule: EditRule, clause: WhenClause, value: str
     : exclusive.includes(value) && others.includes('ttft_over_ms')
 }
 
+function actionHasScheduleContext(rule: EditRule, kind: string): boolean {
+  if (rule.whenType !== 'schedule') return true
+  if (kind === 'check_keys') return true
+  return kind === 'mark_provider_unhealthy' && rule.scope_provider.trim() !== ''
+}
+
 export function actionKindDisabled(rule: EditRule, action: EditAction, kind: string): boolean {
+  if (!actionHasScheduleContext(rule, kind)) return true
   if (kind === action.kind) return false
   const others = rule.dos.filter((a) => a !== action).map((a) => a.kind)
   return others.includes(kind)
@@ -21,7 +28,7 @@ export function actionKindDisabled(rule: EditRule, action: EditAction, kind: str
 
 export function nextActionKind(rule: EditRule, kinds: readonly string[]): string | undefined {
   const used = new Set(rule.dos.map((a) => a.kind))
-  return kinds.find((k) => !used.has(k))
+  return kinds.find((kind) => actionHasScheduleContext(rule, kind) && !used.has(kind))
 }
 
 export function hasUnusedActionKind(rule: EditRule, kinds: readonly string[]): boolean {
@@ -30,6 +37,14 @@ export function hasUnusedActionKind(rule: EditRule, kinds: readonly string[]): b
 
 export function routeDisabled(rule: EditRule, value: string): boolean {
   return value === 'passthrough' ? whenHasTTFT(rule) : value === 'wait' ? !whenHasTTFT(rule) : false
+}
+
+export function retryConditionsDisabled(rule: EditRule): boolean {
+  return rule.whenType === 'schedule'
+}
+
+export function routeControlsDisabled(rule: EditRule): boolean {
+  return rule.whenType === 'schedule'
 }
 
 export function normalizeRule(rule: EditRule): void {

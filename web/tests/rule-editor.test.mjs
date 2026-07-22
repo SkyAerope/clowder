@@ -9,7 +9,12 @@ const {
   parseRules,
   serializeRules,
 } = await vite.ssrLoadModule('/src/lib/rule-editor.ts')
-const { actionKindDisabled, nextActionKind } = await vite.ssrLoadModule('/src/lib/rule-constraints.ts')
+const {
+  actionKindDisabled,
+  nextActionKind,
+  retryConditionsDisabled,
+  routeControlsDisabled,
+} = await vite.ssrLoadModule('/src/lib/rule-constraints.ts')
 after(() => vite.close())
 
 test('parses an independently authored indented error-rule fragment', () => {
@@ -182,4 +187,34 @@ test('disables action kinds already used by another action', () => {
   assert.equal(actionKindDisabled(rule, capture, 'mark_key'), true)
   assert.equal(actionKindDisabled(rule, capture, 'check_key'), false)
   assert.equal(nextActionKind(rule, ['mark_key', 'mark_model_unhealthy', 'capture']), 'mark_model_unhealthy')
+})
+
+test('disables retry-chain controls for schedule rules', () => {
+  // Given
+  const rule = blankRule()
+  rule.whenType = 'schedule'
+
+  // When / Then
+  assert.equal(retryConditionsDisabled(rule), true)
+  assert.equal(routeControlsDisabled(rule), true)
+})
+
+test('only enables schedule actions with available context', () => {
+  // Given
+  const rule = blankRule()
+  const action = { kind: 'check_keys', mark_status: 'invalid', chain: false, fields: [] }
+  rule.whenType = 'schedule'
+
+  // When / Then
+  assert.equal(actionKindDisabled(rule, action, 'check_keys'), false)
+  assert.equal(actionKindDisabled(rule, action, 'mark_provider_unhealthy'), true)
+  assert.equal(actionKindDisabled(rule, action, 'mark_key'), true)
+  assert.equal(actionKindDisabled(rule, action, 'mark_model_unhealthy'), true)
+  assert.equal(actionKindDisabled(rule, action, 'check_key'), true)
+  assert.equal(actionKindDisabled(rule, action, 'capture'), true)
+  assert.equal(actionKindDisabled(rule, action, 'backoff_key'), true)
+  assert.equal(nextActionKind(rule, ['mark_key', 'check_keys']), 'check_keys')
+
+  rule.scope_provider = 'featherless'
+  assert.equal(actionKindDisabled(rule, action, 'mark_provider_unhealthy'), false)
 })
