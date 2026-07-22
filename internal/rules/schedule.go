@@ -13,7 +13,7 @@ type Scheduler struct {
 func NewScheduler(all []*Rule, fire func(r *Rule)) (*Scheduler, error) {
 	c := cron.New() // 标准 5 段 cron
 	for _, r := range all {
-		if r.When.Type() != "schedule" {
+		if !r.Enabled || r.When.Type() != "schedule" {
 			continue
 		}
 		rule := r
