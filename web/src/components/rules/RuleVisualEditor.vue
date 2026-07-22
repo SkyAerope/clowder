@@ -7,9 +7,10 @@ import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem } from '@/components/ui/dropdown-menu'
+import { ChevronDownIcon } from '@lucide/vue'
 import { Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-vue-next'
 import {
-  ACTION_KINDS, CAPTURE_FIELDS, CAPTURE_LABELS, CHECK_STATUS, IF_FIELDS, IF_OPS, MARK_STATUS,
+  ACTION_KINDS, CAPTURE_FIELDS, CAPTURE_LABELS, CHECK_STATUS, IF_FIELDS, IF_OPS, MARK_STATUS, WHEN_FIELDS,
   RACE_ROUTES, ROUTES, TRANSPORTS, TYPE_LABELS, blankRule, lbl, routeDisabled,
   summarize, whenFieldDisabled, actionKindDisabled, nextActionKind, hasUnusedActionKind, type EditAction, type EditRule,
 } from '@/lib/rule-editor'
@@ -73,7 +74,7 @@ function toggleRace(rule: EditRule, route: string): void { const index = rule.ro
               <Input v-else-if="clause.field === 'ttft_over_ms'" v-model="clause.text" type="number" class="field-sizing-content min-w-56 w-auto max-w-full" placeholder="毫秒阈值" />
               <Input v-else v-model="clause.text" class="field-sizing-content min-w-56 w-auto max-w-full" placeholder="留空=任意" />
             </div>
-            <Button variant="ghost" size="icon-sm" class="text-destructive ml-auto shrink-0 hover:bg-transparent hover:text-destructive" @click="rule.whenClauses.splice(clauseIndex, 1)"><Trash2 /></Button>
+            <Button variant="ghost" size="icon-sm" class="text-destructive ml-auto shrink-0 hover:text-destructive" @click="rule.whenClauses.splice(clauseIndex, 1)"><Trash2 /></Button>
           </div>
           <button type="button" class="text-muted-foreground hover:text-foreground hover:border-foreground/30 flex w-full cursor-pointer items-center justify-center gap-1 rounded-lg border border-dashed border-foreground/20 py-1.5 text-xs" @click="addWhenClause(rule)"><Plus class="size-3" /> 加条件</button>
         </div>
@@ -81,15 +82,93 @@ function toggleRace(rule: EditRule, route: string): void { const index = rule.ro
         <div v-else class="space-y-2"><Label class="text-xs text-muted-foreground">触发条件 (when)：定时</Label><div class="flex flex-wrap gap-3"><div class="space-y-1"><Label class="text-xs text-muted-foreground">cron 表达式</Label><Input v-model="rule.cron" class="w-48 font-mono" placeholder="0 */6 * * *" /></div><div class="space-y-1"><Label class="text-xs text-muted-foreground">scope provider（可选）</Label><Input v-model="rule.scope_provider" class="w-48" placeholder="限定 provider" /></div></div></div>
         <div class="space-y-2">
           <Label class="text-xs text-muted-foreground">附加条件 (if)</Label>
-          <div v-for="(condition, conditionIndex) in rule.ifs" :key="conditionIndex" class="flex items-center gap-2"><Select v-model="condition.field"><SelectTrigger class="w-48"><SelectValue /></SelectTrigger><SelectContent :body-lock="false"><SelectItem v-for="field in IF_FIELDS" :key="field.v" :value="field.v">{{ field.label }}</SelectItem></SelectContent></Select><Select v-model="condition.op"><SelectTrigger class="w-24"><SelectValue /></SelectTrigger><SelectContent :body-lock="false"><SelectItem v-for="operator in IF_OPS" :key="operator.v" :value="operator.v">{{ operator.label }}</SelectItem></SelectContent></Select><Input v-model.number="condition.value" type="number" class="w-24" /><Button variant="ghost" size="icon-sm" class="text-destructive ml-auto" @click="rule.ifs.splice(conditionIndex, 1)"><Trash2 /></Button></div>
+          <div v-for="(condition, conditionIndex) in rule.ifs" :key="conditionIndex" class="flex items-center gap-2">
+            <Select v-model="condition.field">
+              <SelectTrigger class="w-48"><SelectValue /></SelectTrigger>
+              <SelectContent :body-lock="false">
+                <SelectItem v-for="field in IF_FIELDS" :key="field.v" :value="field.v">{{ field.label }}</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select v-model="condition.op">
+              <SelectTrigger class="w-24"><SelectValue /></SelectTrigger>
+              <SelectContent :body-lock="false">
+                <SelectItem v-for="operator in IF_OPS" :key="operator.v" :value="operator.v">{{ operator.label }}</SelectItem>
+              </SelectContent>
+            </Select>
+            <Input v-model.number="condition.value" type="number" class="w-24" />
+            <Button variant="ghost" size="icon-sm" class="text-destructive ml-auto hover:text-destructive" @click="rule.ifs.splice(conditionIndex, 1)"><Trash2 /></Button>
+          </div>
           <button type="button" class="text-muted-foreground hover:text-foreground hover:border-foreground/30 flex w-full cursor-pointer items-center justify-center gap-1 rounded-lg border border-dashed border-foreground/20 py-1.5 text-xs" @click="rule.ifs.push({ field: 'attempt_no', op: 'gte', value: 2 })"><Plus class="size-3" /> 加条件</button>
         </div>
         <div class="space-y-2">
           <Label class="text-xs text-muted-foreground">动作 (do)</Label>
-          <div v-for="(action, actionIndex) in rule.dos" :key="actionIndex" class="flex flex-wrap items-center gap-2"><Select v-model="action.kind"><SelectTrigger class="w-48"><SelectValue /></SelectTrigger><SelectContent :body-lock="false"><SelectItem v-for="kind in ACTION_KINDS" :key="kind.v" :value="kind.v" :disabled="actionKindDisabled(rule, action, kind.v)">{{ kind.label }}</SelectItem></SelectContent></Select><Select v-if="action.kind === 'mark_key'" v-model="action.mark_status"><SelectTrigger class="w-56"><SelectValue /></SelectTrigger><SelectContent :body-lock="false"><SelectItem v-for="status in MARK_STATUS" :key="status.v" :value="status.v">{{ status.label }}</SelectItem></SelectContent></Select><div v-else-if="action.kind === 'check_key' || action.kind === 'check_keys'" class="flex items-center gap-1.5"><Switch v-model="action.chain" /><Label class="text-xs text-muted-foreground">链式（chain）</Label></div><DropdownMenu v-else-if="action.kind === 'capture'"><DropdownMenuTrigger as-child><button type="button" class="border-input flex min-h-8 min-w-56 items-center gap-1 rounded-lg border px-2.5 py-1 text-sm"><span class="flex flex-1 flex-wrap gap-1"><Badge v-for="field in action.fields" :key="field" variant="secondary">{{ CAPTURE_LABELS[field] ?? field }}</Badge><span v-if="!action.fields.length" class="text-muted-foreground">全抓（点击多选）</span></span><ChevronDown /></button></DropdownMenuTrigger><DropdownMenuContent align="start"><DropdownMenuCheckboxItem v-for="field in CAPTURE_FIELDS" :key="field" :model-value="action.fields.includes(field)" @select="(event: Event) => event.preventDefault()" @update:model-value="() => toggleField(action, field)">{{ CAPTURE_LABELS[field] ?? field }}</DropdownMenuCheckboxItem></DropdownMenuContent></DropdownMenu><Button variant="ghost" size="icon-sm" class="text-destructive ml-auto" @click="rule.dos.splice(actionIndex, 1)"><Trash2 /></Button></div>
+          <div v-for="(action, actionIndex) in rule.dos" :key="actionIndex" class="flex flex-wrap items-center gap-2">
+            <Select v-model="action.kind">
+              <SelectTrigger class="w-48"><SelectValue /></SelectTrigger>
+              <SelectContent :body-lock="false">
+                <SelectItem v-for="kind in ACTION_KINDS" :key="kind.v" :value="kind.v" :disabled="actionKindDisabled(rule, action, kind.v)">{{ kind.label }}</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select v-if="action.kind === 'mark_key'" v-model="action.mark_status">
+              <SelectTrigger class="w-56"><SelectValue /></SelectTrigger>
+              <SelectContent :body-lock="false">
+                <SelectItem v-for="status in MARK_STATUS" :key="status.v" :value="status.v">{{ status.label }}</SelectItem>
+              </SelectContent>
+            </Select>
+            <div v-else-if="action.kind === 'check_key' || action.kind === 'check_keys'" class="flex items-center gap-1.5">
+              <Switch v-model="action.chain" />
+              <Label class="text-xs text-muted-foreground">链式（chain）</Label>
+            </div>
+            <DropdownMenu v-else-if="action.kind === 'capture'">
+              <DropdownMenuTrigger as-child>
+                <button type="button" class="border-input focus-visible:border-ring focus-visible:ring-ring/50 flex h-8 min-w-56 w-fit cursor-pointer items-center justify-between gap-1.5 whitespace-nowrap rounded-lg border bg-transparent py-2 pr-2 pl-2.5 text-sm transition-colors select-none outline-none focus-visible:ring-3">
+                  <span class="flex flex-1 items-center gap-1">
+                    <Badge v-for="field in action.fields" :key="field" variant="secondary" class="shrink-0">{{ CAPTURE_LABELS[field] ?? field }}</Badge>
+                    <span v-if="!action.fields.length" class="text-muted-foreground">选择抓取的部分，默认全抓</span>
+                  </span>
+                  <ChevronDownIcon class="text-muted-foreground pointer-events-none size-4 shrink-0" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuCheckboxItem v-for="field in CAPTURE_FIELDS" :key="field" :model-value="action.fields.includes(field)" @select="(event: Event) => event.preventDefault()" @update:model-value="() => toggleField(action, field)">{{ CAPTURE_LABELS[field] ?? field }}</DropdownMenuCheckboxItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button variant="ghost" size="icon-sm" class="text-destructive ml-auto hover:text-destructive" @click="rule.dos.splice(actionIndex, 1)"><Trash2 /></Button>
+          </div>
           <button type="button" class="text-muted-foreground hover:text-foreground hover:border-foreground/30 flex w-full cursor-pointer items-center justify-center gap-1 rounded-lg border border-dashed border-foreground/20 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-50" :disabled="!hasUnusedActionKind(rule, ACTION_KINDS.map((k) => k.v))" @click="addAction(rule)"><Plus class="size-3" /> 加动作</button>
         </div>
-        <div class="space-y-2"><Label class="text-xs text-muted-foreground">路由 (route)</Label><div class="flex items-start gap-2"><Select v-model="rule.routeMode"><SelectTrigger class="w-48"><SelectValue /></SelectTrigger><SelectContent :body-lock="false"><SelectItem value="single">单一</SelectItem><SelectItem value="race">双发竞速</SelectItem></SelectContent></Select><Select v-if="rule.routeMode === 'single'" v-model="rule.routeSingle"><SelectTrigger class="w-56"><SelectValue /></SelectTrigger><SelectContent :body-lock="false"><SelectItem v-for="route in ROUTES" :key="route.v" :value="route.v" :disabled="routeDisabled(rule, route.v)">{{ route.label }}</SelectItem></SelectContent></Select><DropdownMenu v-else><DropdownMenuTrigger as-child><button type="button" class="border-input flex min-h-8 flex-1 items-center gap-1 rounded-lg border px-2.5 py-1 text-sm"><span class="flex flex-1 flex-wrap gap-1"><Badge v-for="route in rule.routeRace" :key="route" variant="secondary">{{ lbl(RACE_ROUTES, route) }}</Badge><span v-if="!rule.routeRace.length" class="text-muted-foreground">选择并发分支（点击多选）</span></span><ChevronDown /></button></DropdownMenuTrigger><DropdownMenuContent align="start"><DropdownMenuCheckboxItem v-for="route in RACE_ROUTES" :key="route.v" :model-value="rule.routeRace.includes(route.v)" @select="(event: Event) => event.preventDefault()" @update:model-value="() => toggleRace(rule, route.v)">{{ route.label }}</DropdownMenuCheckboxItem></DropdownMenuContent></DropdownMenu></div></div>
+        <div class="space-y-2">
+          <Label class="text-xs text-muted-foreground">路由 (route)</Label>
+          <div class="flex items-start gap-2">
+            <Select v-model="rule.routeMode">
+              <SelectTrigger class="w-48"><SelectValue /></SelectTrigger>
+              <SelectContent :body-lock="false">
+                <SelectItem value="single">单一</SelectItem>
+                <SelectItem value="race">双发竞速</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select v-if="rule.routeMode === 'single'" v-model="rule.routeSingle">
+              <SelectTrigger class="w-56"><SelectValue /></SelectTrigger>
+              <SelectContent :body-lock="false">
+                <SelectItem v-for="route in ROUTES" :key="route.v" :value="route.v" :disabled="routeDisabled(rule, route.v)">{{ route.label }}</SelectItem>
+              </SelectContent>
+            </Select>
+            <DropdownMenu v-else>
+              <DropdownMenuTrigger as-child>
+                <button type="button" class="border-input focus-visible:border-ring focus-visible:ring-ring/50 flex h-8 min-w-56 w-fit cursor-pointer items-center justify-between gap-1.5 whitespace-nowrap rounded-lg border bg-transparent py-2 pr-2 pl-2.5 text-sm transition-colors select-none outline-none focus-visible:ring-3">
+                  <span class="flex flex-1 items-center gap-1">
+                    <Badge v-for="route in rule.routeRace" :key="route" variant="secondary" class="shrink-0">{{ lbl(RACE_ROUTES, route) }}</Badge>
+                    <span v-if="!rule.routeRace.length" class="text-muted-foreground">选择并发分支</span>
+                  </span>
+                  <ChevronDownIcon class="text-muted-foreground pointer-events-none size-4 shrink-0" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuCheckboxItem v-for="route in RACE_ROUTES" :key="route.v" :model-value="rule.routeRace.includes(route.v)" @select="(event: Event) => event.preventDefault()" @update:model-value="() => toggleRace(rule, route.v)">{{ route.label }}</DropdownMenuCheckboxItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
       </div>
     </div>
     <Button v-if="props.allowMultiple" variant="outline" class="w-full" @click="addRule"><Plus /> 新增规则</Button>
