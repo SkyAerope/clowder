@@ -31,3 +31,12 @@ export function blankRule(): EditRule {
     ifs: [], dos: [], routeMode: 'single', routeSingle: 'passthrough', routeRace: [],
   }
 }
+
+export function moveRule(rules: EditRule[], draggedUid: number, insertionIndex: number): void {
+  const draggedIndex = rules.findIndex((rule) => rule._uid === draggedUid)
+  if (draggedIndex < 0) return
+
+  const [draggedRule] = rules.splice(draggedIndex, 1)
+  const adjustedInsertionIndex = insertionIndex - (draggedIndex < insertionIndex ? 1 : 0)
+  if (draggedRule) rules.splice(adjustedInsertionIndex, 0, draggedRule)
+}

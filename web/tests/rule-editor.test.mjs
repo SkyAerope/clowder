@@ -5,6 +5,7 @@ import { createServer } from 'vite'
 const vite = await createServer({ server: { middlewareMode: true }, appType: 'custom' })
 const {
   blankRule,
+  moveRule,
   parseRuleFragment,
   parseRules,
   serializeRules,
@@ -173,6 +174,40 @@ test('preserves disabled builtin identifiers through a YAML round trip', () => {
 
   // Then
   assert.deepEqual([...reparsed.disabledBuiltins], ['rate-limit', 'transport-error'])
+})
+
+test('serializes a rule before the target selected by the drop marker', () => {
+  // Given
+  const rules = ['first', 'second', 'third'].map((slug) => {
+    const rule = blankRule()
+    rule.slug = slug
+    rule.name = slug
+    return rule
+  })
+
+  // When
+  moveRule(rules, rules[0]._uid, 2)
+  const reparsed = parseRules(serializeRules(rules))
+
+  // Then
+  assert.deepEqual(reparsed.rules.map((rule) => rule.slug), ['second', 'first', 'third'])
+})
+
+test('serializes a rule after the target selected by the drop marker', () => {
+  // Given
+  const rules = ['first', 'second', 'third'].map((slug) => {
+    const rule = blankRule()
+    rule.slug = slug
+    rule.name = slug
+    return rule
+  })
+
+  // When
+  moveRule(rules, rules[2]._uid, 1)
+  const reparsed = parseRules(serializeRules(rules))
+
+  // Then
+  assert.deepEqual(reparsed.rules.map((rule) => rule.slug), ['first', 'third', 'second'])
 })
 
 test('disables action kinds already used by another action', () => {
