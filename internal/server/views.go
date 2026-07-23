@@ -59,14 +59,14 @@ func ruleViews(rs []*rules.Rule) []map[string]any {
 	var out []map[string]any
 	for _, r := range rs {
 		out = append(out, map[string]any{
-			"slug":        r.Slug,
-			"name":        r.Name,
-			"priority":    r.Priority,
-			"source":      r.Source,
-			"builtin":     r.Builtin,
-			"enabled":     r.Enabled,
-			"type":        r.When.Type(),
-			"detail":      ruleDetail(r),
+			"slug":     r.Slug,
+			"name":     r.Name,
+			"priority": r.Priority,
+			"source":   r.Source,
+			"builtin":  r.Builtin,
+			"enabled":  r.Enabled,
+			"type":     r.When.Type(),
+			"detail":   ruleDetail(r),
 		})
 	}
 	return out
