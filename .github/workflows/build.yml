@@ -21,13 +21,13 @@ jobs:
   frontend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.33.2
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -41,7 +41,7 @@ jobs:
         working-directory: web
         run: pnpm build
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: web-dist
           path: web/dist
@@ -61,15 +61,15 @@ jobs:
           # - { goos: darwin, goarch: amd64 }
           # - { goos: darwin, goarch: arm64 }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
 
       # 把前端产物放回 web/dist 供 //go:embed all:dist 使用
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: web-dist
           path: web/dist
@@ -84,7 +84,7 @@ jobs:
           go build -trimpath -ldflags="-s -w" -o "dist/${out}" ./cmd/clowder
           ls -lh dist/
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: clowder-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/*
@@ -93,7 +93,7 @@ jobs:
       # 仅 tag 触发时发布到 Release
       - name: Release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           fail_on_unmatched_files: true
