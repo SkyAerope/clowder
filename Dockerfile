@@ -36,7 +36,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     go build -trimpath -ldflags="-s -w" -o /out/clowder ./cmd/clowder
 
 # ---- 阶段 3：运行时镜像（默认目标）----
-FROM alpine:3.20
+FROM alpine:3.24
 RUN apk add --no-cache ca-certificates tzdata \
     && adduser -D -u 10001 clowder
 COPY --from=build /out/clowder /usr/local/bin/clowder
