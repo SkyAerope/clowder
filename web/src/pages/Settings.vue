@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import { RotateCw, Save } from 'lucide-vue-next'
+import { RotateCw, Save } from '@lucide/vue'
 import { toast } from 'vue-sonner'
 
 type ConfigResponse = { readonly config_yaml: string; readonly models_yaml: string }

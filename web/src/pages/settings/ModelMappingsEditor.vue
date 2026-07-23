@@ -3,7 +3,7 @@ import Card from '../../components/Card.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Plus, Trash2 } from 'lucide-vue-next'
+import { Plus, Trash2 } from '@lucide/vue'
 import type { ModelEntry, ModelPattern } from './model-mapping-codec'
 
 const entries = defineModel<ModelEntry[]>('entries', { required: true })
