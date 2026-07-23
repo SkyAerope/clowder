@@ -49,18 +49,16 @@ function toggleRace(rule: EditRule, route: string): void { const index = rule.ro
 <template>
   <div class="grid grid-cols-1 items-start gap-3" :class="{ 'md:grid-cols-2': props.allowMultiple }">
     <div v-for="(column, columnIndex) in ruleColumns" :key="columnIndex" class="flex flex-col gap-3"><div v-for="rule in column" :key="rule._uid" class="border-border bg-card overflow-hidden rounded-xl border" :class="{ 'opacity-60': !rule.enabled }">
-      <div class="flex items-start gap-2 p-3">
-        <button type="button" class="flex min-w-0 flex-1 cursor-pointer items-start gap-2 text-left" @click="toggleOpen(rule._uid)">
+      <div class="relative min-h-20 p-3 pr-14">
+        <button type="button" class="flex w-full min-w-0 cursor-pointer items-start gap-2 text-left" @click="toggleOpen(rule._uid)">
           <component :is="expanded.has(rule._uid) ? ChevronDown : ChevronRight" class="text-muted-foreground mt-0.5 size-4 shrink-0" />
           <div class="min-w-0 flex-1 space-y-1">
             <div class="flex flex-col gap-0.5"><span class="truncate font-medium">{{ rule.name || '未命名规则' }}</span><span class="text-muted-foreground truncate font-mono text-xs">{{ rule.slug }}</span></div>
             <div class="flex flex-wrap items-center gap-1.5"><Badge variant="secondary">P{{ rule.priority }}</Badge><Badge variant="outline">{{ TYPE_LABELS[rule.whenType] }}</Badge><span class="text-muted-foreground text-xs">{{ summarize(rule) }}</span></div>
           </div>
         </button>
-        <div class="mt-1 flex shrink-0 flex-col items-center gap-2">
-          <Switch v-model="rule.enabled" title="启用 / 停用此规则" />
-          <Button v-if="allowMultiple" variant="ghost" size="icon-sm" class="text-destructive hover:text-destructive" title="删除规则" @click="removeRule(rule)"><Trash2 /></Button>
-        </div>
+        <Switch v-model="rule.enabled" class="absolute top-3 right-3" title="启用 / 停用此规则" />
+        <Button v-if="allowMultiple" variant="ghost" size="icon-sm" class="text-destructive absolute right-3 bottom-3 hover:text-destructive" title="删除规则" @click="removeRule(rule)"><Trash2 /></Button>
       </div>
       <div v-if="expanded.has(rule._uid)" class="space-y-3 border-t border-foreground/10 p-3">
         <Input v-model="rule.name" placeholder="名称（显示为标题）" />
