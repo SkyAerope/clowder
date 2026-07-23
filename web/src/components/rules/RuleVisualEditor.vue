@@ -111,8 +111,8 @@ function toggleRace(rule: EditRule, route: string): void { const index = rule.ro
         <Button v-if="allowMultiple" variant="ghost" size="icon-sm" class="text-destructive absolute right-3 bottom-2 hover:text-destructive" title="删除规则" @click="removeRule(rule)"><Trash2 /></Button>
       </div>
       <div v-if="expanded.has(rule._uid)" class="space-y-3 border-t border-foreground/10 p-3">
-        <Input v-model="rule.name" placeholder="名称（显示为标题）" />
-        <Input v-model="rule.slug" placeholder="Slug（英文标识）" />
+        <Input v-model="rule.name" placeholder="名称" />
+        <Input v-model="rule.slug" placeholder="Slug" />
         <div class="flex flex-wrap items-end gap-3">
           <div class="space-y-1"><Label class="text-xs text-muted-foreground">优先级（越小越优先）</Label><Input v-model.number="rule.priority" type="number" class="w-28" /></div>
           <div class="space-y-1"><Label class="text-xs text-muted-foreground">触发类型 (when)</Label><Select v-model="rule.whenType"><SelectTrigger class="w-48"><SelectValue /></SelectTrigger><SelectContent :body-lock="false"><SelectItem value="upstream">上游结果</SelectItem><SelectItem value="check">探活结果</SelectItem><SelectItem value="schedule">定时</SelectItem></SelectContent></Select></div>
