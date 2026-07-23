@@ -101,3 +101,19 @@ func TestParseRules_rejects_status_code_capture_field(t *testing.T) {
 		t.Fatalf("ParseRules() error = %v, want status_code capture rejection", err)
 	}
 }
+
+func TestParseRules_preserves_condition_error_context(t *testing.T) {
+	// Given
+	data := []byte(`rules:
+  - retry-later:
+      when: { ttft_over_ms: "not-a-number" }
+`)
+
+	// When
+	_, err := ParseRules(data, SourceUserFile)
+
+	// Then
+	if err == nil || err.Error() != "rule retry-later: invalid ttft_over_ms not-a-number" {
+		t.Fatalf("ParseRules() error = %v, want condition error with rule context", err)
+	}
+}
