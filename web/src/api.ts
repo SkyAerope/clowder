@@ -55,7 +55,6 @@ export function ensureSession(): Promise<void> {
   return sessionPromise
 }
 
-// ---- 类型 ----
 export interface Provider {
   name: string
   display_name: string
