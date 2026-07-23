@@ -3,7 +3,7 @@ import { ref } from 'vue'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { ChevronDown, ChevronRight } from 'lucide-vue-next'
+import { ChevronDown, ChevronRight } from '@lucide/vue'
 import { TYPE_LABELS, actPhrase, ifPhrase, routePhrase, summarize, whenPhrase, type EditRule } from '@/lib/rule-editor'
 import type { RulePreset } from '../api'
 

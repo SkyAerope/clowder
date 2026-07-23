@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem } from '@/components/ui/dropdown-menu'
 import { ChevronDownIcon } from '@lucide/vue'
-import { Plus, Trash2, ChevronDown, ChevronRight, GripVertical } from 'lucide-vue-next'
+import { Plus, Trash2, ChevronDown, ChevronRight, GripVertical } from '@lucide/vue'
 import { moveRule } from '@/lib/rule-model'
 import {
   ACTION_KINDS, CAPTURE_FIELDS, CAPTURE_LABELS, CHECK_STATUS, IF_FIELDS, IF_OPS, MARK_STATUS, WHEN_FIELDS,

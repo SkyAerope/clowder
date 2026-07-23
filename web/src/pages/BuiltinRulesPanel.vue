@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
-import { ChevronDown, ChevronRight } from 'lucide-vue-next'
+import { ChevronDown, ChevronRight } from '@lucide/vue'
 import { TYPE_LABELS, actPhrase, ifPhrase, routePhrase, summarize, whenPhrase, type EditRule } from '@/lib/rule-editor'
 
 defineProps<{ edits: EditRule[]; disabled: Set<string> }>()
