@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -20,11 +20,18 @@ const props = withDefaults(defineProps<{ allowMultiple?: boolean }>(), { allowMu
 const model = defineModel<EditRule[]>({ required: true })
 const initialRule = model.value[0]
 const expanded = ref<Set<number>>(new Set(!props.allowMultiple && initialRule ? [initialRule._uid] : []))
+const ruleColumns = computed(() => props.allowMultiple
+  ? [model.value.filter((_, index) => index % 2 === 0), model.value.filter((_, index) => index % 2 === 1)]
+  : [model.value])
 
 function toggleOpen(uid: number): void {
   if (expanded.value.has(uid)) expanded.value.delete(uid); else expanded.value.add(uid)
 }
 function addRule(): void { const rule = blankRule(); model.value.push(rule); expanded.value.add(rule._uid) }
+function removeRule(rule: EditRule): void {
+  const index = model.value.indexOf(rule)
+  if (index >= 0) model.value.splice(index, 1)
+}
 function addWhenClause(rule: EditRule): void {
   const used = new Set(rule.whenClauses.map((clause) => clause.field))
   const next = WHEN_FIELDS.find((option) => !used.has(option.v) && !whenFieldDisabled(rule, { field: '', text: '', regex: false }, option.v)) ?? WHEN_FIELDS[0]
@@ -40,8 +47,8 @@ function toggleRace(rule: EditRule, route: string): void { const index = rule.ro
 </script>
 
 <template>
-  <div class="flex flex-col gap-3">
-    <div v-for="(rule, ruleIndex) in model" :key="rule._uid" class="border-border bg-card overflow-hidden rounded-xl border" :class="{ 'opacity-60': !rule.enabled }">
+  <div class="grid grid-cols-1 items-start gap-3" :class="{ 'md:grid-cols-2': props.allowMultiple }">
+    <div v-for="(column, columnIndex) in ruleColumns" :key="columnIndex" class="flex flex-col gap-3"><div v-for="rule in column" :key="rule._uid" class="border-border bg-card overflow-hidden rounded-xl border" :class="{ 'opacity-60': !rule.enabled }">
       <div class="flex items-start gap-2 p-3">
         <button type="button" class="flex min-w-0 flex-1 cursor-pointer items-start gap-2 text-left" @click="toggleOpen(rule._uid)">
           <component :is="expanded.has(rule._uid) ? ChevronDown : ChevronRight" class="text-muted-foreground mt-0.5 size-4 shrink-0" />
@@ -52,7 +59,7 @@ function toggleRace(rule: EditRule, route: string): void { const index = rule.ro
         </button>
         <div class="mt-1 flex shrink-0 flex-col items-center gap-2">
           <Switch v-model="rule.enabled" title="启用 / 停用此规则" />
-          <Button v-if="allowMultiple && expanded.has(rule._uid)" variant="ghost" size="icon-sm" class="text-destructive hover:text-destructive" title="删除规则" @click="model.splice(ruleIndex, 1)"><Trash2 /></Button>
+          <Button v-if="allowMultiple" variant="ghost" size="icon-sm" class="text-destructive hover:text-destructive" title="删除规则" @click="removeRule(rule)"><Trash2 /></Button>
         </div>
       </div>
       <div v-if="expanded.has(rule._uid)" class="space-y-3 border-t border-foreground/10 p-3">
@@ -120,7 +127,7 @@ function toggleRace(rule: EditRule, route: string): void { const index = rule.ro
               <Switch v-model="action.chain" />
               <Label class="text-xs text-muted-foreground">链式（chain）</Label>
             </div>
-            <DropdownMenu v-else-if="action.kind === 'capture'">
+            <DropdownMenu v-else-if="action.kind === 'capture'" :modal="false">
               <DropdownMenuTrigger as-child>
                 <button type="button" class="border-input focus-visible:border-ring focus-visible:ring-ring/50 flex h-8 min-w-56 w-fit cursor-pointer items-center justify-between gap-1.5 whitespace-nowrap rounded-lg border bg-transparent py-2 pr-2 pl-2.5 text-sm transition-colors select-none outline-none focus-visible:ring-3">
                   <span class="flex flex-1 items-center gap-1">
@@ -154,7 +161,7 @@ function toggleRace(rule: EditRule, route: string): void { const index = rule.ro
                 <SelectItem v-for="route in ROUTES" :key="route.v" :value="route.v" :disabled="routeDisabled(rule, route.v)">{{ route.label }}</SelectItem>
               </SelectContent>
             </Select>
-            <DropdownMenu v-else>
+            <DropdownMenu v-else :modal="false">
               <DropdownMenuTrigger as-child>
                 <button type="button" class="border-input focus-visible:border-ring focus-visible:ring-ring/50 flex h-8 min-w-56 w-fit cursor-pointer items-center justify-between gap-1.5 whitespace-nowrap rounded-lg border bg-transparent py-2 pr-2 pl-2.5 text-sm transition-colors select-none outline-none focus-visible:ring-3 disabled:cursor-not-allowed" :disabled="routeControlsDisabled(rule)">
                   <span class="flex flex-1 items-center gap-1">
@@ -171,7 +178,7 @@ function toggleRace(rule: EditRule, route: string): void { const index = rule.ro
           </div>
         </div>
       </div>
-    </div>
-    <Button v-if="props.allowMultiple" variant="outline" class="w-full" @click="addRule"><Plus /> 新增规则</Button>
+    </div></div>
+    <Button v-if="props.allowMultiple" variant="outline" class="w-full md:col-span-2" @click="addRule"><Plus /> 新增规则</Button>
   </div>
 </template>
