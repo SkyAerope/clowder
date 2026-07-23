@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Ban, Check, CircleCheck, CircleDashed, MoreVertical, SlidersHorizontal, Stethoscope, Trash2, X } from 'lucide-vue-next'
+import { Ban, Check, CircleCheck, CircleDashed, MoreVertical, SlidersHorizontal, Stethoscope, Trash2, X } from '@lucide/vue'
 import type { KeyRow } from '../../api'
 import Card from '../../components/Card.vue'
 import CopyButton from '../../components/CopyButton.vue'

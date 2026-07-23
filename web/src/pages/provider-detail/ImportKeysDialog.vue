@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { toast } from 'vue-sonner'
-import { Save } from 'lucide-vue-next'
+import { Save } from '@lucide/vue'
 import { api } from '../../api'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'

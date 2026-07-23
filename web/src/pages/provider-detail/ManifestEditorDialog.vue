@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue'
-import { Save } from 'lucide-vue-next'
+import { Save } from '@lucide/vue'
 import { toast } from 'vue-sonner'
 import { api } from '../../api'
 import Card from '../../components/Card.vue'
