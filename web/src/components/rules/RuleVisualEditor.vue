@@ -8,7 +8,8 @@ import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem } from '@/components/ui/dropdown-menu'
 import { ChevronDownIcon } from '@lucide/vue'
-import { Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-vue-next'
+import { Plus, Trash2, ChevronDown, ChevronRight, GripVertical } from 'lucide-vue-next'
+import { moveRule } from '@/lib/rule-model'
 import {
   ACTION_KINDS, CAPTURE_FIELDS, CAPTURE_LABELS, CHECK_STATUS, IF_FIELDS, IF_OPS, MARK_STATUS, WHEN_FIELDS,
   RACE_ROUTES, ROUTES, TRANSPORTS, TYPE_LABELS, blankRule, lbl, routeDisabled,
@@ -16,10 +17,17 @@ import {
   retryConditionsDisabled, routeControlsDisabled, type EditAction, type EditRule,
 } from '@/lib/rule-editor'
 
+type DropMarker = {
+  readonly targetUid: number
+  readonly placement: 'before' | 'after'
+}
+
 const props = withDefaults(defineProps<{ allowMultiple?: boolean }>(), { allowMultiple: true })
 const model = defineModel<EditRule[]>({ required: true })
 const initialRule = model.value[0]
 const expanded = ref<Set<number>>(new Set(!props.allowMultiple && initialRule ? [initialRule._uid] : []))
+const draggingUid = ref<number>()
+const dropMarker = ref<DropMarker>()
 const ruleColumns = computed(() => props.allowMultiple
   ? [model.value.filter((_, index) => index % 2 === 0), model.value.filter((_, index) => index % 2 === 1)]
   : [model.value])
@@ -31,6 +39,45 @@ function addRule(): void { const rule = blankRule(); model.value.push(rule); exp
 function removeRule(rule: EditRule): void {
   const index = model.value.indexOf(rule)
   if (index >= 0) model.value.splice(index, 1)
+}
+function beginDrag(event: DragEvent, uid: number): void {
+  draggingUid.value = uid
+  dropMarker.value = undefined
+  if (!event.dataTransfer) return
+  event.dataTransfer.effectAllowed = 'move'
+  event.dataTransfer.setData('text/plain', String(uid))
+  const handle = event.currentTarget
+  if (!(handle instanceof HTMLElement)) return
+  const card = handle.closest('[data-rule-card]')
+  if (!(card instanceof HTMLElement)) return
+  const rect = card.getBoundingClientRect()
+  event.dataTransfer.setDragImage(card, event.clientX - rect.left, event.clientY - rect.top)
+}
+function markDragOver(event: DragEvent, uid: number): void {
+  if (draggingUid.value === undefined || draggingUid.value === uid) return
+  event.preventDefault()
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+  const target = event.currentTarget
+  if (!(target instanceof HTMLElement)) return
+  const rect = target.getBoundingClientRect()
+  dropMarker.value = {
+    targetUid: uid,
+    placement: event.clientY < rect.top + rect.height / 2 ? 'before' : 'after',
+  }
+}
+function endDrag(): void {
+  draggingUid.value = undefined
+  dropMarker.value = undefined
+}
+function dropRule(event: DragEvent): void {
+  event.preventDefault()
+  const dragged = draggingUid.value
+  const marker = dropMarker.value
+  if (dragged !== undefined && marker) {
+    const targetIndex = model.value.findIndex((rule) => rule._uid === marker.targetUid)
+    if (targetIndex >= 0) moveRule(model.value, dragged, targetIndex + (marker.placement === 'after' ? 1 : 0))
+  }
+  endDrag()
 }
 function addWhenClause(rule: EditRule): void {
   const used = new Set(rule.whenClauses.map((clause) => clause.field))
@@ -48,7 +95,9 @@ function toggleRace(rule: EditRule, route: string): void { const index = rule.ro
 
 <template>
   <div class="grid grid-cols-1 items-start gap-3" :class="{ 'md:grid-cols-2': props.allowMultiple }">
-    <div v-for="(column, columnIndex) in ruleColumns" :key="columnIndex" class="flex flex-col gap-3"><div v-for="rule in column" :key="rule._uid" class="border-border bg-card overflow-hidden rounded-xl border" :class="{ 'opacity-60': !rule.enabled }">
+    <div v-for="(column, columnIndex) in ruleColumns" :key="columnIndex" class="flex flex-col gap-3"><div v-for="rule in column" :key="rule._uid" class="relative" @dragover="markDragOver($event, rule._uid)" @drop="dropRule">
+      <div v-if="dropMarker?.targetUid === rule._uid" data-rule-drop-marker class="bg-foreground pointer-events-none absolute inset-x-0 z-20 h-0.5" :class="dropMarker.placement === 'before' ? '-top-1.5' : '-bottom-1.5'" />
+      <div data-rule-card class="border-border bg-card overflow-hidden rounded-xl border" :class="{ 'opacity-60': !rule.enabled }">
       <div class="relative min-h-20 p-3 pr-14">
         <button type="button" class="flex w-full min-w-0 cursor-pointer items-start gap-2 text-left" @click="toggleOpen(rule._uid)">
           <component :is="expanded.has(rule._uid) ? ChevronDown : ChevronRight" class="text-muted-foreground mt-0.5 size-4 shrink-0" />
@@ -58,7 +107,8 @@ function toggleRace(rule: EditRule, route: string): void { const index = rule.ro
           </div>
         </button>
         <Switch v-model="rule.enabled" class="absolute top-3 right-3" title="启用 / 停用此规则" />
-        <Button v-if="allowMultiple" variant="ghost" size="icon-sm" class="text-destructive absolute right-3 bottom-3 hover:text-destructive" title="删除规则" @click="removeRule(rule)"><Trash2 /></Button>
+        <Button v-if="allowMultiple" variant="ghost" size="icon-sm" class="text-muted-foreground absolute bottom-2 left-2 cursor-grab active:cursor-grabbing" draggable="true" aria-label="按住拖动此规则排序" title="按住拖动排序" @click.stop @dragstart.stop="beginDrag($event, rule._uid)" @dragend="endDrag"><GripVertical aria-hidden="true" /></Button>
+        <Button v-if="allowMultiple" variant="ghost" size="icon-sm" class="text-destructive absolute right-3 bottom-2 hover:text-destructive" title="删除规则" @click="removeRule(rule)"><Trash2 /></Button>
       </div>
       <div v-if="expanded.has(rule._uid)" class="space-y-3 border-t border-foreground/10 p-3">
         <Input v-model="rule.name" placeholder="名称（显示为标题）" />
@@ -176,7 +226,7 @@ function toggleRace(rule: EditRule, route: string): void { const index = rule.ro
           </div>
         </div>
       </div>
-    </div></div>
+    </div></div></div>
     <Button v-if="props.allowMultiple" variant="outline" class="w-full md:col-span-2" @click="addRule"><Plus /> 新增规则</Button>
   </div>
 </template>
