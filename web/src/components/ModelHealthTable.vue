@@ -5,7 +5,7 @@ import {
   Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { Check, Stethoscope, X } from 'lucide-vue-next'
+import { Check, Stethoscope, X } from '@lucide/vue'
 import { toast } from 'vue-sonner'
 import { api } from '../api'
 import type { HealthSnapshot } from '../api'

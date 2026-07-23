@@ -7,7 +7,7 @@ import {
   ListboxVirtualizer,
   useFilter,
 } from 'reka-ui'
-import { Download } from 'lucide-vue-next'
+import { Download } from '@lucide/vue'
 import { toast } from 'vue-sonner'
 import { api } from '../api'
 import { Button } from '@/components/ui/button'

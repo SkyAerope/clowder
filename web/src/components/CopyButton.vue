@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Copy, Check } from 'lucide-vue-next'
+import { Copy, Check } from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 
 const props = defineProps<{ value: string; label?: string }>()
