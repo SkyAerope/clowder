@@ -154,7 +154,7 @@ func (t *Tracker) MarkSuccess(provider, model string, ttftMs int64) {
 		e.backoffCount = 0
 		e.until = time.Time{}
 		e.lastSuccess = now
-			e.lastSlug = ""
+		e.lastSlug = ""
 	}
 	if ttftMs > 0 {
 		e := t.get(provider, model)
@@ -215,7 +215,7 @@ func (t *Tracker) Snapshots() []Snapshot {
 			Status:     e.resolve(now),
 			AvgTTFTMs:  e.avgTTFTMs,
 			ErrorCount: e.errorCount,
-				LastSlug:   e.lastSlug,
+			LastSlug:   e.lastSlug,
 		}
 		if s.Status != before {
 			t.persist(k[0], k[1], e)
