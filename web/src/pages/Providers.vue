@@ -9,7 +9,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   Table, TableBody, TableCell, TableEmpty, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
-import { RefreshCw, ChevronRight } from 'lucide-vue-next'
+import { RefreshCw, ChevronRight } from '@lucide/vue'
 
 const router = useRouter()
 const providers = ref<Provider[]>([])

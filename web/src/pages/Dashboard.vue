@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
-import { RefreshCw, Zap } from 'lucide-vue-next'
+import { RefreshCw, Zap } from '@lucide/vue'
 
 const providers = ref<Provider[]>([])
 const models = ref<Record<string, ModelEdge[]>>({})

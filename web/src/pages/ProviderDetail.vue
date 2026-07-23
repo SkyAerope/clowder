@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import * as YAML from 'yaml'
-import { ArrowLeft, FileCog, Plus } from 'lucide-vue-next'
+import { ArrowLeft, FileCog, Plus } from '@lucide/vue'
 import { toast } from 'vue-sonner'
 import { api, type HealthSnapshot } from '../api'
 import Card from '../components/Card.vue'
