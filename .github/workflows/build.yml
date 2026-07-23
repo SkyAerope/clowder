@@ -23,7 +23,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4 # 读取 package.json 的 packageManager 字段锁定版本
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
 
       - uses: actions/setup-node@v4
         with:
