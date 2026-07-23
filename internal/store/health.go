@@ -31,7 +31,7 @@ func (s *Store) SaveHealth(snapshot HealthSnapshot) error {
 				last_slug=excluded.last_slug`,
 		snapshot.Provider, snapshot.Model, snapshot.Status, snapshot.AvgTTFTMs,
 		snapshot.ErrorCount, snapshot.BackoffCount, timeValue(snapshot.UnhealthyUntil),
-			timeValue(snapshot.LastErrorAt), timeValue(snapshot.LastSuccessAt), snapshot.LastSlug)
+		timeValue(snapshot.LastErrorAt), timeValue(snapshot.LastSuccessAt), snapshot.LastSlug)
 	return err
 }
 
@@ -51,7 +51,7 @@ func (s *Store) ListHealth() ([]HealthSnapshot, error) {
 		var until, lastError, lastSuccess sql.NullString
 		if err := rows.Scan(&snapshot.Provider, &snapshot.Model, &snapshot.Status,
 			&snapshot.AvgTTFTMs, &snapshot.ErrorCount, &snapshot.BackoffCount,
-				&until, &lastError, &lastSuccess, &snapshot.LastSlug); err != nil {
+			&until, &lastError, &lastSuccess, &snapshot.LastSlug); err != nil {
 			return nil, err
 		}
 		snapshot.UnhealthyUntil = parseTime(until)
