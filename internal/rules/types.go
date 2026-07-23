@@ -31,12 +31,12 @@ const (
 
 // Rule 是一条完整规则。
 type Rule struct {
-	Slug        string
-	Name        string
-	Priority    int // 默认 100，越小越优先
-	Source      int // SourceManifest / SourceUserFile / SourceBuiltin
-	Builtin     bool
-	Enabled     bool // false = 规则停用，引擎跳过匹配
+	Slug     string
+	Name     string
+	Priority int // 默认 100，越小越优先
+	Source   int // SourceManifest / SourceUserFile / SourceBuiltin
+	Builtin  bool
+	Enabled  bool // false = 规则停用，引擎跳过匹配
 
 	When  When
 	If    []Condition

@@ -67,7 +67,7 @@ func Validate(all []*Rule, ctx *ValidationContext) []ValidationWarning {
 	seen := map[sig][]string{}
 	for _, r := range all {
 		k := sig{r.TriggerKey(), r.Priority}
-			seen[k] = append(seen[k], r.Slug)
+		seen[k] = append(seen[k], r.Slug)
 	}
 	for k, names := range seen {
 		if len(names) > 1 {
@@ -88,7 +88,7 @@ func Validate(all []*Rule, ctx *ValidationContext) []ValidationWarning {
 				if ctx != nil {
 					if scope != "" {
 						if hasCheck, ok := ctx.Providers[scope]; ok && !hasCheck {
-					add(r.Slug, "provider %s 未定义 check 脚本，该规则的 %s 不会执行", scope, a.Kind)
+							add(r.Slug, "provider %s 未定义 check 脚本，该规则的 %s 不会执行", scope, a.Kind)
 						}
 					} else {
 						for p, hasCheck := range ctx.Providers {
@@ -101,23 +101,23 @@ func Validate(all []*Rule, ctx *ValidationContext) []ValidationWarning {
 			}
 			// 3. check/schedule 触发器下 capture 无报文可抓
 			if a.Kind == "capture" && r.When.Type() != "upstream" {
-					add(r.Slug, "%s 触发器下 capture 无报文可抓（no-op）", r.When.Type())
+				add(r.Slug, "%s 触发器下 capture 无报文可抓（no-op）", r.When.Type())
 			}
 		}
 		// 4. 引用的 provider / model 不存在
 		if ctx != nil {
 			if p := r.When.Provider; p != "" {
 				if _, ok := ctx.Providers[p]; !ok {
-						add(r.Slug, "引用的 provider %q 不存在", p)
+					add(r.Slug, "引用的 provider %q 不存在", p)
 				} else if m := r.When.Model; m != "" {
 					if models, ok := ctx.ProviderModels[p]; ok && len(models) > 0 && !models[m] {
-							add(r.Slug, "provider %q 当前模型列表中没有 %q（已删除或被黑白名单排除）", p, m)
+						add(r.Slug, "provider %q 当前模型列表中没有 %q（已删除或被黑白名单排除）", p, m)
 					}
 				}
 			}
 			if sp := r.When.ScopeProvider; sp != "" {
 				if _, ok := ctx.Providers[sp]; !ok {
-						add(r.Slug, "scope 引用的 provider %q 不存在", sp)
+					add(r.Slug, "scope 引用的 provider %q 不存在", sp)
 				}
 			}
 		}
