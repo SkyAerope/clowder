@@ -5,7 +5,7 @@ import { session, refreshSession, ensureSession, api } from './api'
 import {
   LayoutDashboard, Boxes, ScrollText, AlertTriangle,
   SlidersHorizontal, Settings, LogOut, LogIn, Cat, Menu,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from '@/components/ui/sheet'

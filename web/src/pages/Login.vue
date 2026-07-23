@@ -5,7 +5,7 @@ import { api, refreshSession } from '../api'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Cat } from 'lucide-vue-next'
+import { Cat } from '@lucide/vue'
 
 const router = useRouter()
 const route = useRoute()
