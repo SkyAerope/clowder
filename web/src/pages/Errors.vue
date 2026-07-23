@@ -16,7 +16,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog'
-import { RefreshCw, BookmarkPlus, Eye } from 'lucide-vue-next'
+import { RefreshCw, BookmarkPlus, Eye } from '@lucide/vue'
 import { toast } from 'vue-sonner'
 import {
   blankRule, normalizeRule, parseRuleFragment, serializeRuleFragment, type EditRule,

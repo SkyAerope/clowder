@@ -17,7 +17,7 @@ import { toast } from 'vue-sonner'
 import {
   buildRequestParams, parseRequestFiltersFromQuery, statusFilterError, type RequestFilterDraft,
 } from './request-filters'
-import { RefreshCw, ChevronLeft, ChevronRight, GitBranch, Fingerprint, TriangleAlert, ListFilter, X, FileJson, ShieldCheck } from 'lucide-vue-next'
+import { RefreshCw, ChevronLeft, ChevronRight, GitBranch, Fingerprint, TriangleAlert, ListFilter, X, FileJson, ShieldCheck } from '@lucide/vue'
 
 const route = useRoute()
 
